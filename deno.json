@@ -1,0 +1,27 @@
+{
+  "name": "@mrg-keystone/danet",
+  "version": "1.0.2",
+  "description": "Core module for Danet framework",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/bootstrap/mod.ts"
+  },
+  "tasks": {
+    "test": "deno test -A --unstable-raw-imports"
+  },
+  "imports": {
+    "#reflect-metadata": "npm:reflect-metadata@0.1.13",
+    "#handlebars": "npm:handlebars@^4.7.8",
+    "#openapi3-ts": "npm:openapi3-ts@4.5.0",
+    "#danet/core": "jsr:@danet/core@2",
+    "#danet/swagger": "jsr:@danet/swagger@2",
+    "#assert": "jsr:@std/assert",
+    "#zod": "npm:zod@3",
+    "@types": "./src/foundation/dto/types.ts",
+    "@foundation/": "./src/foundation/"
+  },
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  }
+}
