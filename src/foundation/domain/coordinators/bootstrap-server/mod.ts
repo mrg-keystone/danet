@@ -10,6 +10,7 @@ import { PostmarkAlerter } from "@foundation/domain/data/postmark/mod.ts";
 import { createRequestLoggingMiddleware } from "@foundation/domain/business/request-logger/mod.ts";
 import { createTokenAuthMiddleware } from "@foundation/domain/business/token-auth/mod.ts";
 import { createMintUi } from "@foundation/domain/business/mint-ui/mod.ts";
+import { createFirebaseVerifier } from "@foundation/domain/business/firebase-auth/mod.ts";
 
 interface BootstrapOptions {
   port?: number;
@@ -92,6 +93,19 @@ export class BootstrapServer {
       );
     }
 
+    // Optional Firebase Auth: a request authorizes with EITHER a signed token OR a Firebase
+    // ID token. Verifying ID tokens needs only the project id (signature is checked against
+    // Google's public certs). Unset ⇒ Firebase path is off (signed tokens only).
+    const firebaseProjectId = Deno.env.get("FIREBASE_PROJECT_ID") ?? "";
+    const firebaseVerifier = firebaseProjectId
+      ? createFirebaseVerifier({ projectId: firebaseProjectId })
+      : undefined;
+    if (!firebaseVerifier) {
+      warnOnce(
+        `[${appName}] FIREBASE_PROJECT_ID not set — Firebase Auth disabled; only signed tokens are accepted on network requests.`,
+      );
+    }
+
     // Process-private key that identifies in-process (BackendClient) requests. Minted per boot,
     // shared only between the in-process client and the auth middleware; never leaves the process.
     const internalKey = crypto.randomUUID();
@@ -104,7 +118,9 @@ export class BootstrapServer {
     adapter.app.use(createRequestLoggingMiddleware(log));
     // Token auth runs inside the log scope so a verified token's `source` tags the logs.
     // A token is required on every network request except localhost and in-process callers.
-    adapter.app.use(createTokenAuthMiddleware({ signingKey, logger: log, internalKey }));
+    adapter.app.use(
+      createTokenAuthMiddleware({ signingKey, logger: log, internalKey, firebaseVerifier }),
+    );
 
     // Localhost-only token minting UI.
     const mintUi = createMintUi({ appName, signingKey, logger: log });

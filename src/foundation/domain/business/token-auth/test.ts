@@ -9,12 +9,23 @@ const KEY = "test-signing-key";
 const INTERNAL = "internal-process-key";
 const future = 4_102_444_800;
 
-function appWith(signingKey = KEY) {
+// A stub Firebase verifier: "good-fb" is valid, anything else throws.
+const stubFirebase = {
+  verify: (idToken: string) =>
+    idToken === "good-fb"
+      ? Promise.resolve({ uid: "uid-9", email: "user@example.com" })
+      : Promise.reject(new Error("bad firebase token")),
+};
+
+function appWith(
+  signingKey = KEY,
+  firebaseVerifier?: { verify: (t: string) => Promise<{ uid: string; email?: string }> },
+) {
   const logger = new Logger();
   logger.configure({ appName: "test" });
   const sources: (string | undefined)[] = [];
   const app = new Hono();
-  app.use(createTokenAuthMiddleware({ signingKey, logger, internalKey: INTERNAL }));
+  app.use(createTokenAuthMiddleware({ signingKey, logger, internalKey: INTERNAL, firebaseVerifier }));
   app.get("/protected", (c) => {
     sources.push(logger.currentRequest()?.source);
     return c.text("ok");
@@ -55,7 +66,7 @@ Deno.test("network request with a valid token passes and attributes source", asy
 Deno.test("network request with no token is rejected with 401", async () => {
   const res = await appWith().fromNetwork(req());
   assertEquals(res.status, 401);
-  assertEquals((await res.json()).message, "Missing access token.");
+  assertEquals((await res.json()).message, "Missing credentials.");
 });
 
 Deno.test("network request with an expired token is rejected with 401", async () => {
@@ -73,6 +84,33 @@ Deno.test("network request with a mis-signed token is rejected with 401", async 
 
 Deno.test("localhost callers are trusted and need no token", async () => {
   assertEquals((await appWith().fromLocalhost(req())).status, 200);
+});
+
+Deno.test("a valid Firebase token authorizes (no signed token needed)", async () => {
+  const { fromNetwork, sources } = appWith(KEY, stubFirebase);
+  const res = await fromNetwork(req(bearer("good-fb")));
+  assertEquals(res.status, 200);
+  assertEquals(sources[0], "user@example.com");
+});
+
+Deno.test("an invalid credential is rejected even with Firebase configured", async () => {
+  const res = await appWith(KEY, stubFirebase).fromNetwork(req(bearer("garbage")));
+  assertEquals(res.status, 401);
+  assertEquals((await res.json()).message, "Invalid or expired credentials.");
+});
+
+Deno.test("a valid signed token still works when Firebase is also configured", async () => {
+  const { fromNetwork, sources } = appWith(KEY, stubFirebase);
+  const token = await signToken({ source: "svc", appName: "test", expiry: future }, KEY);
+  const res = await fromNetwork(req(bearer(token)));
+  assertEquals(res.status, 200);
+  assertEquals(sources[0], "svc");
+});
+
+Deno.test("Firebase works even when no signing key is set (token-only disabled)", async () => {
+  const { fromNetwork } = appWith("", stubFirebase);
+  assertEquals((await fromNetwork(req(bearer("good-fb")))).status, 200);
+  assertEquals((await fromNetwork(req(bearer("nope")))).status, 401);
 });
 
 Deno.test("no signing key ⇒ network requests fail closed, internal key still trusted", async () => {

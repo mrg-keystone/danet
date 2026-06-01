@@ -2,6 +2,7 @@ import type { Context, MiddlewareHandler } from "#hono";
 import type { Logger } from "@foundation/domain/business/logger/mod.ts";
 import { TokenError, verifyToken } from "@foundation/domain/business/token/mod.ts";
 import { INTERNAL_REQUEST_HEADER } from "@foundation/domain/business/backend-client/mod.ts";
+import type { FirebaseVerifier } from "@foundation/domain/business/firebase-auth/mod.ts";
 
 /**
  * Hono middleware that requires a signed access token on every request — EXCEPT requests from
@@ -13,38 +14,60 @@ import { INTERNAL_REQUEST_HEADER } from "@foundation/domain/business/backend-cli
  *    separate channel that distinguishes in-process from network traffic.
  *  - Localhost callers (loopback peer address).
  *
- * Any other (network) request must carry a valid, unexpired `Authorization: Bearer <token>`;
- * otherwise it is rejected with 401. A verified token's `source` is attributed to the request's
+ * Any other (network) request must present, in `Authorization: Bearer <credential>`, EITHER a
+ * valid signed access token OR (when a Firebase verifier is configured) a valid Firebase Auth
+ * ID token. Either one authorizes the request; otherwise it is rejected with 401. The resolved
+ * identity (`source` for a signed token, email/uid for Firebase) is attributed to the request's
  * logs, so register this AFTER the request-logging middleware.
  */
 export interface TokenAuthConfig {
-  /** The secret signing key (env variable). Empty ⇒ no token can be verified, so every
-   *  non-trusted request is rejected (fails closed). */
+  /** The secret signing key (env variable). Empty ⇒ signed tokens cannot be verified. */
   signingKey: string;
   logger: Logger;
   /** Process-private key the in-process client stamps on its requests. Minted at boot. */
   internalKey: string;
+  /** Optional Firebase ID token verifier. When set, a valid Firebase token also authorizes. */
+  firebaseVerifier?: FirebaseVerifier;
 }
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 export function createTokenAuthMiddleware(config: TokenAuthConfig): MiddlewareHandler {
-  const { signingKey, logger, internalKey } = config;
+  const { signingKey, logger, internalKey, firebaseVerifier } = config;
 
   return async (c, next) => {
     if (isTrustedOrigin(c, internalKey)) return next();
 
     const token = bearer(c.req.header("authorization"));
-    if (!token) return unauthorized(c, "Missing access token.");
+    if (!token) return unauthorized(c, "Missing credentials.");
 
-    try {
-      const payload = await verifyToken(token, signingKey);
-      logger.setSource(payload.source);
-      return await next();
-    } catch (err) {
-      const detail = err instanceof TokenError ? err.message : "Invalid access token.";
-      return unauthorized(c, detail);
+    // 1) Signed service token.
+    if (signingKey) {
+      try {
+        const payload = await verifyToken(token, signingKey);
+        logger.setSource(payload.source);
+        return await next();
+      } catch (err) {
+        // With no Firebase fallback, report the specific reason; otherwise try Firebase.
+        if (!firebaseVerifier) {
+          const detail = err instanceof TokenError ? err.message : "Invalid access token.";
+          return unauthorized(c, detail);
+        }
+      }
     }
+
+    // 2) Firebase Auth ID token (e.g. from the browser/frontend).
+    if (firebaseVerifier) {
+      try {
+        const claims = await firebaseVerifier.verify(token);
+        logger.setSource(claims.email ?? claims.uid);
+        return await next();
+      } catch {
+        // fall through to the generic rejection
+      }
+    }
+
+    return unauthorized(c, "Invalid or expired credentials.");
   };
 }
 

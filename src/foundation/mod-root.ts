@@ -20,3 +20,12 @@ export { createMintUi, isLocalRequest } from "@foundation/domain/business/mint-u
 export type { MintUiConfig } from "@foundation/domain/business/mint-ui/mod.ts";
 export { withBasePath } from "@foundation/domain/business/mount/mod.ts";
 export type { FetchHandler } from "@types";
+export {
+  createFirebaseVerifier,
+  FirebaseAuthError,
+} from "@foundation/domain/business/firebase-auth/mod.ts";
+export type {
+  FirebaseClaims,
+  FirebaseVerifier,
+  FirebaseVerifierOptions,
+} from "@foundation/domain/business/firebase-auth/mod.ts";

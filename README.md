@@ -83,35 +83,50 @@ The Datadog site is fixed to `us5.datadoghq.com`, and alert emails use a 5-minut
 
 | Variable | Enables | If missing/blank |
 |---|---|---|
-| `MANUAL_KEY` | the secret that **signs and verifies** access tokens | warns once; tokens can't be minted (mint UI fails closed) and network requests can't be verified (all rejected with 401) — **fails closed** |
+| `MANUAL_KEY` | the secret that **signs and verifies** signed access tokens | warns once; tokens can't be minted (mint UI fails closed) and signed tokens can't be verified |
+| `FIREBASE_PROJECT_ID` | accepting **Firebase Auth** ID tokens as an alternative credential | warns once; Firebase path off (signed tokens only) |
 
-`MANUAL_KEY` is the per-app signing secret. It is read from the environment so it never lives
-in the (public) package source. See [Access tokens & authorization](#access-tokens--authorization).
+`MANUAL_KEY` is the per-app signing secret; `FIREBASE_PROJECT_ID` is your Firebase project id
+(only the project id is needed — ID tokens are verified against Google's public certs, so no
+service-account `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` is required). Both are read from
+the environment so they never live in the (public) package source. If **neither** is set, no
+network request can authorize. See [Access tokens & authorization](#access-tokens--authorization).
 
 ### Access tokens & authorization
 
-Every **network** request must carry a valid, unexpired access token; requests from the
-in-process `backend` client and from `localhost` are trusted and need none.
+Every **network** request must present a valid credential; requests from the in-process
+`backend` client and from `localhost` are trusted and need none.
 
-| Caller | How it's recognized | Token required? |
+| Caller | How it's recognized | Credential required? |
 |---|---|---|
 | In-process (`backend.fetch(...)`) | a process-private key stamped on the request (`x-danet-internal`) | **No** — trusted |
 | `localhost` | loopback peer address | **No** — trusted |
-| Network (anything else) | neither of the above | **Yes** — `401` without a valid token |
+| Network (anything else) | neither of the above | **Yes** — `401` without a valid credential |
 
 The in-process key is a random value minted at boot (`crypto.randomUUID()`), shared only
 between the `backend` client and the auth middleware. It never leaves the process — not an env
 var, not sent over the network — so a network client cannot forge it. It's compared in constant
 time, and is regenerated every boot.
 
-A network caller authorizes by sending the token in the `Authorization` header:
+A network caller authorizes by sending a credential in the `Authorization` header:
 
 ```
-Authorization: Bearer <token>
+Authorization: Bearer <credential>
 ```
 
-A verified token's `source` is attributed to every log emitted during that request (it appears
-as a `source` attribute alongside `requestId`).
+The credential may be **either** of two things — whichever validates first authorizes the
+request:
+
+1. **A signed access token** (HS256, keyed by `MANUAL_KEY`) — for service-to-service callers.
+   Mint one with the localhost UI or `signToken` (below).
+2. **A Firebase Auth ID token** — for browser/frontend callers. When `FIREBASE_PROJECT_ID` is
+   set, the backend verifies the ID token against Google's public certs (RS256 + `aud`/`iss`/
+   `exp` checks). This is what lets a Fresh frontend's island/`fetch` calls hit `/api` using
+   the user's Firebase login, with no signed token.
+
+The resolved identity is attributed to every log emitted during the request (it appears as a
+`source` attribute alongside `requestId`): the token's `source` for a signed token, or the
+user's email (falling back to uid) for a Firebase token.
 
 #### Token shape
 
@@ -156,6 +171,25 @@ try {
   if (err instanceof TokenError) { /* malformed, mis-signed, or expired */ }
 }
 ```
+
+#### Verifying Firebase ID tokens directly
+
+`bootstrapServer` wires Firebase verification automatically when `FIREBASE_PROJECT_ID` is set.
+The verifier is also exported if you need it standalone:
+
+```ts
+import { createFirebaseVerifier, FirebaseAuthError } from "@mrg-keystone/danet";
+
+const firebase = createFirebaseVerifier({ projectId: Deno.env.get("FIREBASE_PROJECT_ID")! });
+
+try {
+  const { uid, email } = await firebase.verify(idTokenFromClient);
+} catch (err) {
+  if (err instanceof FirebaseAuthError) { /* missing, malformed, mis-signed, or expired */ }
+}
+```
+
+Signing keys are fetched from Google and cached (honoring the certs' `Cache-Control`).
 
 ### `backend` — in-process HTTP client
 
@@ -264,6 +298,13 @@ root-registered routes still match); anything else returns `404`. Used to expose
 under e.g. `/api` alongside a Fresh frontend while the same handler still serves at root
 standalone — see [Deployment](#deployment).
 
+### `createFirebaseVerifier({ projectId })`
+
+Returns a verifier whose `verify(idToken)` validates a Firebase Auth ID token (RS256 against
+Google's public certs, plus `aud`/`iss`/`exp`) and resolves `{ uid, email? }`, or throws
+`FirebaseAuthError`. `bootstrapServer` uses it automatically when `FIREBASE_PROJECT_ID` is set;
+exported for standalone use. See [Access tokens & authorization](#access-tokens--authorization).
+
 ### `setupWithSwagger(server)`
 
 Lower-level alternative. Takes an existing `Server` instance and returns a configured `HttpAdapter` with Swagger routes registered, without starting it.
@@ -364,9 +405,15 @@ So one Deno Deploy process serves the Fresh UI at `/`, exposes the token-gated A
 for external callers, and lets the frontend reach the backend in-process. The backend stays
 fully runnable standalone — same `api`, different entry.
 
+For browser-side calls that *do* go over the network to `/api` (an island's `fetch`), send the
+user's **Firebase ID token** as `Authorization: Bearer <idToken>`; with `FIREBASE_PROJECT_ID`
+set, the backend accepts it (see
+[Access tokens & authorization](#access-tokens--authorization)). Server-side rendering should
+still prefer `api.backend.fetch(...)`, which is in-process and needs no credential.
+
 **Deno Deploy notes**
-- Set env vars in the Deploy project: `MANUAL_KEY` (token signing), plus `DD_API_KEY` /
-  `POSTMARK_*` as needed.
+- Set env vars in the Deploy project: `MANUAL_KEY` (signed tokens) and/or `FIREBASE_PROJECT_ID`
+  (Firebase Auth), plus `DD_API_KEY` / `POSTMARK_*` as needed.
 - Fresh requires a build: `deno task build`, then serve `_fresh/server.js` — the backend
   singleton is imported by Fresh's server code and runs in the same process.
 - The localhost `/_mint` UI is unreachable in production (it `403`s off-localhost). Mint tokens

@@ -21,6 +21,8 @@ export {
   isLocalRequest,
   withBasePath,
   INTERNAL_REQUEST_HEADER,
+  createFirebaseVerifier,
+  FirebaseAuthError,
 } from "@foundation/mod-root.ts";
 export type {
   LogLevel,
@@ -29,6 +31,9 @@ export type {
   TokenAuthConfig,
   MintUiConfig,
   FetchHandler,
+  FirebaseClaims,
+  FirebaseVerifier,
+  FirebaseVerifierOptions,
 } from "@foundation/mod-root.ts";
 
 export function safeStart(cb: () => Promise<void>): Promise<void> | undefined {
