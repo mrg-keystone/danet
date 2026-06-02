@@ -28,15 +28,23 @@ export interface TokenAuthConfig {
   internalKey: string;
   /** Optional Firebase ID token verifier. When set, a valid Firebase token also authorizes. */
   firebaseVerifier?: FirebaseVerifier;
+  /**
+   * Path prefixes that bypass auth entirely (public). A prefix matches a request whose path
+   * equals it or starts with `prefix + "/"`, e.g. `/docs` exempts the Swagger docs. Matched
+   * against the path the handler sees, so a mounted `/api/docs` (prefix stripped by
+   * `withBasePath`) is covered by `/docs` too.
+   */
+  publicPaths?: string[];
 }
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 export function createTokenAuthMiddleware(config: TokenAuthConfig): MiddlewareHandler {
-  const { signingKey, logger, internalKey, firebaseVerifier } = config;
+  const { signingKey, logger, internalKey, firebaseVerifier, publicPaths = [] } = config;
 
   return async (c, next) => {
     if (isTrustedOrigin(c, internalKey)) return next();
+    if (isPublicPath(c.req.path, publicPaths)) return next();
 
     const token = bearer(c.req.header("authorization"));
     if (!token) return unauthorized(c, "Missing credentials.");
@@ -82,6 +90,11 @@ function isTrustedOrigin(c: Context, internalKey: string): boolean {
 
   const peer = remoteHostname(c);
   return peer !== undefined && LOOPBACK_HOSTS.has(peer);
+}
+
+/** A path is public when it equals a prefix or sits under it (`/docs` ⇒ `/docs`, `/docs/x`). */
+function isPublicPath(path: string, prefixes: string[]): boolean {
+  return prefixes.some((p) => path === p || path.startsWith(`${p}/`));
 }
 
 function remoteHostname(c: Context): string | undefined {

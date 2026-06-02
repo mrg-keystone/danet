@@ -20,16 +20,28 @@ const stubFirebase = {
 function appWith(
   signingKey = KEY,
   firebaseVerifier?: { verify: (t: string) => Promise<{ uid: string; email?: string }> },
+  publicPaths?: string[],
 ) {
   const logger = new Logger();
   logger.configure({ appName: "test" });
   const sources: (string | undefined)[] = [];
   const app = new Hono();
-  app.use(createTokenAuthMiddleware({ signingKey, logger, internalKey: INTERNAL, firebaseVerifier }));
+  app.use(
+    createTokenAuthMiddleware({
+      signingKey,
+      logger,
+      internalKey: INTERNAL,
+      firebaseVerifier,
+      publicPaths,
+    }),
+  );
   app.get("/protected", (c) => {
     sources.push(logger.currentRequest()?.source);
     return c.text("ok");
   });
+  app.get("/docs", (c) => c.text("docs"));
+  app.get("/docs/users", (c) => c.text("docs/users"));
+  app.get("/docsignore", (c) => c.text("not docs"));
 
   // `env` mirrors what Deno.serve passes; a network request has a non-loopback peer.
   const fromNetwork = (req: Request) =>
@@ -84,6 +96,20 @@ Deno.test("network request with a mis-signed token is rejected with 401", async 
 
 Deno.test("localhost callers are trusted and need no token", async () => {
   assertEquals((await appWith().fromLocalhost(req())).status, 200);
+});
+
+Deno.test("public paths bypass auth (docs exempt, prefix and sub-paths)", async () => {
+  const app = appWith(KEY, undefined, ["/docs"]);
+  assertEquals((await app.fromNetwork(new Request("http://app/docs"))).status, 200);
+  assertEquals((await app.fromNetwork(new Request("http://app/docs/users"))).status, 200);
+});
+
+Deno.test("a public prefix does not leak to lookalike paths", async () => {
+  const app = appWith(KEY, undefined, ["/docs"]);
+  // /docsignore is NOT under /docs — still requires a credential
+  assertEquals((await app.fromNetwork(new Request("http://app/docsignore"))).status, 401);
+  // protected routes are unaffected
+  assertEquals((await app.fromNetwork(req())).status, 401);
 });
 
 Deno.test("a valid Firebase token authorizes (no signed token needed)", async () => {

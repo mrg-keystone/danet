@@ -103,6 +103,10 @@ Every **network** request must present a valid credential; requests from the in-
 | `localhost` | loopback peer address | **No** — trusted |
 | Network (anything else) | neither of the above | **Yes** — `401` without a valid credential |
 
+The Swagger docs (`/docs`, and `/api/docs` when mounted under Fresh) are **public** when Swagger
+is enabled — they bypass the credential gate so the API reference stays browsable. The localhost
+`/_mint` UI is **not** exempt: it stays blocked from the network.
+
 The in-process key is a random value minted at boot (`crypto.randomUUID()`), shared only
 between the `backend` client and the auth middleware. It never leaves the process — not an env
 var, not sent over the network — so a network client cannot forge it. It's compared in constant
