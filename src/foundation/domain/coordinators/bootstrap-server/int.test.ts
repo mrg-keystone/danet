@@ -54,6 +54,27 @@ Deno.test("bootstrapServer - enables swagger by default", async () => {
   await server.stop();
 });
 
+Deno.test("mounted handler: /_mint reachable from localhost when conn info is forwarded", async () => {
+  const port = portCounter++;
+  const server = await bootstrapServer("test-app", AppModule, { port });
+
+  // Reporter's topology: another listener dispatches through the returned handler.
+  // Forwarding `info` (as Deno.serve provides it) keeps loopback detection working.
+  const loopback = { remoteAddr: { transport: "tcp", hostname: "127.0.0.1", port: 1 } };
+  const remote = { remoteAddr: { transport: "tcp", hostname: "203.0.113.5", port: 1 } };
+  const mintReq = () => new Request("http://app/_mint");
+
+  // deno-lint-ignore no-explicit-any
+  const local = await server.handler(mintReq(), loopback as any);
+  assertEquals(local.status, 200);
+  assertStringIncludes(await local.text(), "Mint access token");
+
+  // A non-loopback caller is forbidden by the mint guard (not a 401 from token auth).
+  // deno-lint-ignore no-explicit-any
+  const offhost = await server.handler(mintReq(), remote as any);
+  assertEquals(offhost.status, 403);
+});
+
 Deno.test("docs: shell is public, spec /json is token-gated (seeded via ?token)", async () => {
   Deno.env.set("MANUAL_KEY", "docs-test-key");
   try {

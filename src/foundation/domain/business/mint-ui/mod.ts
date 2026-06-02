@@ -36,15 +36,15 @@ function guard(c: Context): Response | undefined {
 }
 
 /**
- * A request is local when it arrives from a loopback address. The connecting socket's address
- * is authoritative and cannot be spoofed by a remote client; the Host header is used only as a
- * fallback for transports where the peer address is unavailable.
+ * A request is local only when its connecting socket address is loopback. That address is
+ * authoritative and cannot be forged by a remote client. We deliberately do NOT fall back to the
+ * `Host` header (which is client-spoofable) — if the peer address is unavailable we fail closed,
+ * since this guard is the sole gate on the token-minting UI. To make this work when the backend
+ * is mounted behind another listener, forward Deno's conn info: `handler(req, info)`.
  */
 export function isLocalRequest(c: Context): boolean {
   const peer = remoteHostname(c);
-  if (peer !== undefined) return LOOPBACK_HOSTS.has(peer);
-  const host = c.req.header("host")?.split(":")[0];
-  return host !== undefined && LOOPBACK_HOSTS.has(host);
+  return peer !== undefined && LOOPBACK_HOSTS.has(peer);
 }
 
 function remoteHostname(c: Context): string | undefined {

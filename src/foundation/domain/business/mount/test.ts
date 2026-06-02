@@ -54,6 +54,19 @@ Deno.test("normalizes a base path given with/without slashes", async () => {
   assertEquals(seen[0], "/orders/1");
 });
 
+Deno.test("forwards Deno conn info to the mounted handler", async () => {
+  let seenInfo: unknown;
+  const handler: FetchHandler = (_req, info) => {
+    seenInfo = info;
+    return new Response("ok");
+  };
+  const mounted = withBasePath("/api", handler);
+  const info = { remoteAddr: { transport: "tcp", hostname: "127.0.0.1", port: 1 } };
+  // deno-lint-ignore no-explicit-any
+  await mounted(new Request("http://app/api/users"), info as any);
+  assertEquals(seenInfo, info);
+});
+
 Deno.test("preserves method, headers, and query", async () => {
   const seen: Request[] = [];
   const handler: FetchHandler = (req) => {

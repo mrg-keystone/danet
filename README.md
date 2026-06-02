@@ -388,8 +388,15 @@ Serve the handler directly — works locally and on Deno Deploy:
 // server.ts
 import { api } from "./backend.ts";
 
-Deno.serve(api.handler);   // or: await api.listen();  (binds the configured port)
+// Forward Deno's conn info so localhost/loopback detection keeps working.
+Deno.serve((req, info) => api.handler(req, info));   // or: await api.listen();
 ```
+
+> **Forward `info`.** `api.handler` takes `(req, info?)`. When you dispatch through it from your
+> own `Deno.serve`, pass the second `info` argument — it carries `remoteAddr`, which the
+> localhost trust, the token-auth localhost exemption, and the `/_mint` guard all rely on. Drop
+> it (`Deno.serve((req) => api.handler(req))`) and every request looks origin-less, so localhost
+> is no longer recognized and `/_mint` becomes unreachable.
 
 Network clients must send a token (`Authorization: Bearer <token>`); see
 [Access tokens & authorization](#access-tokens--authorization).
@@ -411,9 +418,12 @@ const mountedApi = withBasePath("/api", api.handler);
 
 export const app = new App<State>()
   .use(staticFiles())
-  .all("/api/*", (ctx) => mountedApi(ctx.req))   // external, token-gated API surface
+  // Forward Fresh's conn info so loopback detection works for the mounted backend.
+  .all("/api/*", (ctx) => mountedApi(ctx.req, ctx.info))   // external, token-gated API surface
   .fsRoutes();
 ```
+
+(`withBasePath` forwards the `info` you pass it down to the backend.)
 
 Fresh's server-side code (handlers, loaders) calls the backend **in-process** — no network
 hop, no token needed:

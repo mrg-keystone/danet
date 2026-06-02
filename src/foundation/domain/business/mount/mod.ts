@@ -20,11 +20,12 @@ import type { FetchHandler } from "@types";
  */
 export function withBasePath(basePath: string, handler: FetchHandler): FetchHandler {
   const base = `/${basePath.replace(/^\/+|\/+$/g, "")}`;
-  return (req) => {
+  return (req, info) => {
     const url = new URL(req.url);
     if (url.pathname === base || url.pathname.startsWith(`${base}/`)) {
       url.pathname = url.pathname.slice(base.length) || "/";
-      return handler(new Request(url, req));
+      // Forward conn info so the mounted backend can still detect loopback/localhost.
+      return handler(new Request(url, req), info);
     }
     return new Response("Not Found", { status: 404 });
   };

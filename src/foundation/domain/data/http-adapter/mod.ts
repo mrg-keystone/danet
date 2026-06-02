@@ -22,10 +22,14 @@ export class DanetHttpAdapter extends HttpAdapter {
     this.initialized = true;
   }
 
-  /** The standalone request dispatcher — identical to the handler `Deno.serve` runs. */
+  /**
+   * The standalone request dispatcher — identical to the handler `Deno.serve` runs. Forwards
+   * Deno's connection `info` to Hono (as the request env) so `remoteAddr` survives when this
+   * handler is mounted behind another listener — keeping loopback/localhost detection working.
+   */
   get handler(): FetchHandler {
     const hono = this.app.router;
-    return (req: Request) => hono.fetch(req);
+    return (req: Request, info?: Deno.ServeHandlerInfo) => hono.fetch(req, info);
   }
 
   async listen(rootModule: Type) {

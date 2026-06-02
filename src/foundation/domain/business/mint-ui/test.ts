@@ -14,8 +14,11 @@ function app(signingKey = KEY) {
   hono.get("/_mint", ui.form);
   hono.post("/_mint", ui.mint);
   // Drive Hono with conn info in `env`, exactly as Deno.serve does. Default: loopback peer.
-  return (req: Request, hostname = "127.0.0.1") =>
-    logger.runInRequest("r", () => hono.fetch(req, { remoteAddr: { hostname } }));
+  // Pass hostname=null to simulate a missing peer address (no conn info forwarded).
+  return (req: Request, hostname: string | null = "127.0.0.1") => {
+    const env = hostname === null ? undefined : { remoteAddr: { hostname } };
+    return logger.runInRequest("r", () => hono.fetch(req, env));
+  };
 }
 
 const future = 4_102_444_800;
@@ -38,6 +41,15 @@ Deno.test("non-localhost requests are forbidden", async () => {
     "203.0.113.7",
   );
   assertEquals(post.status, 403);
+});
+
+Deno.test("fails closed when no peer address is available (no Host-header fallback)", async () => {
+  // A spoofed Host must NOT grant access when the socket address is unknown.
+  const res = await app()(
+    new Request("http://localhost/_mint", { headers: { host: "localhost" } }),
+    null,
+  );
+  assertEquals(res.status, 403);
 });
 
 Deno.test("POST mints a verifiable token", async () => {

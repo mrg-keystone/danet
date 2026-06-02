@@ -127,9 +127,10 @@ export class BootstrapServer {
     adapter.app.use(createRequestLoggingMiddleware(log));
     // Token auth runs inside the log scope so a verified token's `source` tags the logs.
     // A token is required on every network request except localhost and in-process callers.
-    // Swagger docs are public when enabled (also covers the mounted `/api/docs`, since the
-    // prefix is stripped before dispatch).
-    const publicPaths = swagger ? ["/docs"] : [];
+    // `/_mint` is governed by its own localhost guard (not token auth), so it bypasses the
+    // credential gate; its guard returns 403 for non-loopback callers. Swagger docs are public
+    // when enabled (also covers the mounted `/api/docs`, since the prefix is stripped first).
+    const publicPaths = swagger ? ["/_mint", "/docs"] : ["/_mint"];
     adapter.app.use(
       createTokenAuthMiddleware({
         signingKey,
