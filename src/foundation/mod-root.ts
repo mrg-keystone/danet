@@ -21,8 +21,17 @@ export type { MintUiConfig } from "@foundation/domain/business/mint-ui/mod.ts";
 export { withBasePath } from "@foundation/domain/business/mount/mod.ts";
 export type { FetchHandler } from "@types";
 export { isPublicContext, Public, PUBLIC_METADATA_KEY } from "@foundation/domain/business/public-route/mod.ts";
-export { createCredentialGuard } from "@foundation/domain/business/token-auth/mod.ts";
-export type { CredentialGuardConfig, DanetGuard } from "@foundation/domain/business/token-auth/mod.ts";
+export { requiredRoles, Roles, ROLES_METADATA_KEY } from "@foundation/domain/business/roles/mod.ts";
+export {
+  createCredentialGuard,
+  getIdentity,
+  IDENTITY_CONTEXT_KEY,
+} from "@foundation/domain/business/token-auth/mod.ts";
+export type {
+  CredentialGuardConfig,
+  DanetGuard,
+  Identity,
+} from "@foundation/domain/business/token-auth/mod.ts";
 export {
   createFirebaseVerifier,
   FirebaseAuthError,

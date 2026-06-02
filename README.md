@@ -166,8 +166,43 @@ class WebhookController {
   `/_mint`) aren't controllers — they self-gate, so they don't need `@Public`.
 - Grep `@Public` to enumerate every unauthenticated route.
 
-`@Public` is about **authentication** (is a credential required) — not authorization (is this
-identity allowed). For per-identity rules, add your own guard on top.
+`@Public` is about **authentication** (is a credential required). For **authorization** by role,
+use `@Roles` (below).
+
+#### `@Roles()` — restrict a route by role
+
+Limit a controller or handler to callers holding **at least one** of the listed roles. The same
+global guard enforces it right after authentication:
+
+```ts
+import { Roles } from "@mrg-keystone/danet";
+
+@Controller("users")
+class UsersController {
+  @Roles("admin")          // only callers with the "admin" role
+  @Delete(":id")
+  remove() {}
+}
+```
+
+- **`@Roles` implies authentication** — a role-gated route always needs a valid credential (it
+  overrides `@Public`). No credential → `401`; valid credential without a listed role → `403`.
+- Method-level `@Roles` overrides class-level; trusted origins (in-process / localhost) bypass it
+  like all auth (use `TRUST_LOCALHOST=false` to enforce roles locally too).
+
+**Where roles come from.** Roles ride *in* the verified credential — no extra lookup:
+
+- **Firebase**: set them as **custom claims** with the Admin SDK (from your admin tooling /
+  Cloud Function — verifying needs only `FIREBASE_PROJECT_ID`, setting needs the service account):
+  ```ts
+  admin.auth().setCustomUserClaims(uid, { roles: ["admin"] });  // or { role: "admin" }
+  ```
+  The backend reads `roles` (array) and/or `role` (string) from the ID token. Note custom-claim
+  changes only apply once the client's ID token refreshes.
+- **Signed tokens**: include `roles` in the payload — `signToken({ source, appName, expiry, roles: ["admin"] }, key)`.
+
+The resolved caller is attached to the request; read it in a handler with `getIdentity(ctx)` →
+`{ source, roles }`.
 
 #### Token shape
 

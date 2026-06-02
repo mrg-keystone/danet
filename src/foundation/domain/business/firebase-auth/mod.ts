@@ -18,6 +18,18 @@ export interface FirebaseClaims {
   uid: string;
   /** The user's email, when present on the token. */
   email?: string;
+  /** Roles from custom claims — `roles: string[]` and/or `role: string`, normalized. */
+  roles: string[];
+}
+
+/** Normalizes role custom claims: accepts a `roles` string array and/or a singular `role`. */
+function extractRoles(claims: Record<string, unknown>): string[] {
+  const roles: string[] = [];
+  if (Array.isArray(claims.roles)) {
+    for (const r of claims.roles) if (typeof r === "string") roles.push(r);
+  }
+  if (typeof claims.role === "string") roles.push(claims.role);
+  return roles;
 }
 
 /** Thrown when a Firebase ID token is missing, malformed, mis-signed, or expired. */
@@ -53,7 +65,7 @@ export function createFirebaseVerifier(opts: FirebaseVerifierOptions): FirebaseV
 
   return {
     async verify(idToken: string): Promise<FirebaseClaims> {
-      let claims: { sub?: unknown; email?: unknown };
+      let claims: Record<string, unknown>;
       try {
         const { payload } = await jwtVerify(
           idToken,
@@ -77,7 +89,7 @@ export function createFirebaseVerifier(opts: FirebaseVerifierOptions): FirebaseV
       const uid = typeof claims.sub === "string" ? claims.sub : "";
       if (!uid) throw new FirebaseAuthError("Token has no subject (uid).");
       const email = typeof claims.email === "string" ? claims.email : undefined;
-      return { uid, email };
+      return { uid, email, roles: extractRoles(claims) };
     },
   };
 }

@@ -15,6 +15,8 @@ export interface TokenPayload {
   expiry: number;
   /** The app the token grants access to. */
   appName: string;
+  /** Roles granted to this token — checked by `@Roles`. Optional. */
+  roles?: string[];
 }
 
 /** Thrown by `verifyToken` when a token is malformed, mis-signed, or expired. */
@@ -67,15 +69,19 @@ export async function verifyToken(
 }
 
 function toClaims(p: TokenPayload): Record<string, unknown> {
-  return { source: p.source, appName: p.appName, exp: p.expiry };
+  const claims: Record<string, unknown> = { source: p.source, appName: p.appName, exp: p.expiry };
+  if (p.roles && p.roles.length) claims.roles = p.roles;
+  return claims;
 }
 
 function fromClaims(claims: Record<string, unknown>): TokenPayload {
-  const { source, appName, exp } = claims;
+  const { source, appName, exp, roles } = claims;
   if (typeof source !== "string" || typeof appName !== "string" || typeof exp !== "number") {
     throw new TokenError("Malformed token: missing or invalid claims.");
   }
-  return { source, appName, expiry: exp };
+  const payload: TokenPayload = { source, appName, expiry: exp };
+  if (Array.isArray(roles)) payload.roles = roles.filter((r): r is string => typeof r === "string");
+  return payload;
 }
 
 function assertKey(key: string) {

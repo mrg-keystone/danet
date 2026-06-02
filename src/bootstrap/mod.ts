@@ -30,7 +30,12 @@ export {
   Public,
   PUBLIC_METADATA_KEY,
   isPublicContext,
+  Roles,
+  ROLES_METADATA_KEY,
+  requiredRoles,
   createCredentialGuard,
+  getIdentity,
+  IDENTITY_CONTEXT_KEY,
 } from "@foundation/mod-root.ts";
 export type {
   LogLevel,
@@ -45,6 +50,7 @@ export type {
   DocsJsonHandlerOptions,
   CredentialGuardConfig,
   DanetGuard,
+  Identity,
 } from "@foundation/mod-root.ts";
 
 export function safeStart(cb: () => Promise<void>): Promise<void> | undefined {

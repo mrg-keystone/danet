@@ -10,6 +10,12 @@ Deno.test("signToken → verifyToken round-trips the payload", async () => {
   assertEquals(await verifyToken(token, KEY), payload);
 });
 
+Deno.test("signToken → verifyToken round-trips roles", async () => {
+  const withRoles = { ...payload, roles: ["admin", "editor"] };
+  const token = await signToken(withRoles, KEY);
+  assertEquals(await verifyToken(token, KEY), withRoles);
+});
+
 Deno.test("verifyToken rejects a token signed with a different key", async () => {
   const token = await signToken(payload, KEY);
   await assertRejects(() => verifyToken(token, "other-key"), TokenError, "Invalid signature");

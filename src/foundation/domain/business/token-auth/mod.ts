@@ -1,10 +1,11 @@
 import type { Context, MiddlewareHandler } from "#hono";
-import { UnauthorizedException } from "#danet/core";
+import { ForbiddenException, UnauthorizedException } from "#danet/core";
 import type { Logger } from "@foundation/domain/business/logger/mod.ts";
 import { TokenError, verifyToken } from "@foundation/domain/business/token/mod.ts";
 import { INTERNAL_REQUEST_HEADER } from "@foundation/domain/business/backend-client/mod.ts";
 import type { FirebaseVerifier } from "@foundation/domain/business/firebase-auth/mod.ts";
 import { isPublicContext } from "@foundation/domain/business/public-route/mod.ts";
+import { requiredRoles } from "@foundation/domain/business/roles/mod.ts";
 
 /**
  * Hono middleware that requires a signed access token on every request — EXCEPT requests from
@@ -133,6 +134,7 @@ export function createCredentialGuard(config: CredentialGuardConfig): DanetGuard
       if (ctx.websocketTopic !== undefined) return true;
 
       const isPublic = isPublicContext(ctx);
+      const roles = requiredRoles(ctx);
 
       if (isTrustedOrigin(context, config.internalKey, trustLocalhost)) return true;
 
@@ -140,22 +142,33 @@ export function createCredentialGuard(config: CredentialGuardConfig): DanetGuard
       const credential = extractBearer(context.req.header("authorization")) ??
         (ctx.websocket ? context.req.query("token") : undefined);
 
+      let identity: Identity | null = null;
       if (credential) {
-        const identity = await validateCredential(credential, {
+        identity = await validateCredential(credential, {
           signingKey: config.signingKey,
           firebaseVerifier: config.firebaseVerifier,
         });
         if (identity) {
           config.logger.setSource(identity.source);
-          return true;
+          if (typeof ctx.set === "function") ctx.set(IDENTITY_CONTEXT_KEY, identity);
+        } else if (!isPublic) {
+          // Present but invalid on a protected route → reject (public routes ignore it).
+          throw new UnauthorizedException();
         }
-        // Present but invalid: a public route ignores it; a protected route rejects.
-        if (isPublic) return true;
-        throw new UnauthorizedException();
       }
 
-      if (isPublic) return true;
-      throw new UnauthorizedException();
+      // Authentication: a credential is required unless the route is @Public — and @Roles always
+      // requires one (a role can't be checked without a verified identity).
+      if (!identity) {
+        if (roles.length > 0 || !isPublic) throw new UnauthorizedException();
+        return true;
+      }
+
+      // Authorization: must hold at least one required role.
+      if (roles.length > 0 && !roles.some((r) => identity!.roles.includes(r))) {
+        throw new ForbiddenException();
+      }
+      return true;
     },
   };
 }
@@ -165,14 +178,20 @@ export function createCredentialGuard(config: CredentialGuardConfig): DanetGuard
  * configured) a Firebase ID token. Returns the resolved identity (`source`), or null if neither
  * validates. Used by the auth middleware and by the gated docs `/json` endpoint.
  */
+/** The caller identity resolved from a verified credential. */
+export interface Identity {
+  source: string;
+  roles: string[];
+}
+
 export async function validateCredential(
   credential: string,
   opts: { signingKey: string; firebaseVerifier?: FirebaseVerifier },
-): Promise<{ source: string } | null> {
+): Promise<Identity | null> {
   if (opts.signingKey) {
     try {
       const payload = await verifyToken(credential, opts.signingKey);
-      return { source: payload.source };
+      return { source: payload.source, roles: payload.roles ?? [] };
     } catch {
       // try Firebase next
     }
@@ -180,12 +199,21 @@ export async function validateCredential(
   if (opts.firebaseVerifier) {
     try {
       const claims = await opts.firebaseVerifier.verify(credential);
-      return { source: claims.email ?? claims.uid };
+      return { source: claims.email ?? claims.uid, roles: claims.roles };
     } catch {
       // neither validated
     }
   }
   return null;
+}
+
+/** Hono context key under which the resolved {@link Identity} is stored by the guard. */
+export const IDENTITY_CONTEXT_KEY = "danet:identity";
+
+/** Reads the caller {@link Identity} the guard attached to the context, if any. */
+// deno-lint-ignore no-explicit-any
+export function getIdentity(context: any): Identity | undefined {
+  return typeof context?.get === "function" ? context.get(IDENTITY_CONTEXT_KEY) : undefined;
 }
 
 /**

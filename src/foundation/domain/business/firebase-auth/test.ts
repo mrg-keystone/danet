@@ -18,8 +18,10 @@ function token(opts: {
   aud?: string;
   iss?: string;
   expired?: boolean;
+  // deno-lint-ignore no-explicit-any
+  claims?: Record<string, any>;
 } = {}) {
-  let jwt = new SignJWT({ ...(opts.email ? { email: opts.email } : {}) })
+  let jwt = new SignJWT({ ...(opts.email ? { email: opts.email } : {}), ...(opts.claims ?? {}) })
     .setProtectedHeader({ alg: "RS256", kid: "test-kid" })
     .setIssuer(opts.iss ?? ISSUER)
     .setAudience(opts.aud ?? PROJECT)
@@ -31,12 +33,20 @@ function token(opts: {
 
 Deno.test("verifies a valid token and returns uid + email", async () => {
   const claims = await verifier().verify(await token({ email: "user@example.com" }));
-  assertEquals(claims, { uid: "uid-123", email: "user@example.com" });
+  assertEquals(claims, { uid: "uid-123", email: "user@example.com", roles: [] });
 });
 
 Deno.test("verifies a token without an email", async () => {
   const claims = await verifier().verify(await token());
-  assertEquals(claims, { uid: "uid-123", email: undefined });
+  assertEquals(claims, { uid: "uid-123", email: undefined, roles: [] });
+});
+
+Deno.test("extracts roles from the `roles` array and singular `role` custom claims", async () => {
+  const arr = await verifier().verify(await token({ claims: { roles: ["admin", "editor"] } }));
+  assertEquals(arr.roles, ["admin", "editor"]);
+
+  const single = await verifier().verify(await token({ claims: { role: "billing" } }));
+  assertEquals(single.roles, ["billing"]);
 });
 
 Deno.test("rejects a token for a different project (audience)", async () => {

@@ -1,10 +1,11 @@
 import { assertEquals, assertRejects } from "#assert";
 import { Hono } from "#hono";
-import { UnauthorizedException } from "#danet/core";
-import { createCredentialGuard, createTokenAuthMiddleware } from "./mod.ts";
+import { ForbiddenException, UnauthorizedException } from "#danet/core";
+import { createCredentialGuard, createTokenAuthMiddleware, getIdentity } from "./mod.ts";
 import { signToken } from "@foundation/domain/business/token/mod.ts";
 import { INTERNAL_REQUEST_HEADER } from "@foundation/domain/business/backend-client/mod.ts";
 import { PUBLIC_METADATA_KEY } from "@foundation/domain/business/public-route/mod.ts";
+import { ROLES_METADATA_KEY } from "@foundation/domain/business/roles/mod.ts";
 import { Logger } from "@foundation/domain/business/logger/mod.ts";
 
 const KEY = "test-signing-key";
@@ -15,13 +16,13 @@ const future = 4_102_444_800;
 const stubFirebase = {
   verify: (idToken: string) =>
     idToken === "good-fb"
-      ? Promise.resolve({ uid: "uid-9", email: "user@example.com" })
+      ? Promise.resolve({ uid: "uid-9", email: "user@example.com", roles: [] })
       : Promise.reject(new Error("bad firebase token")),
 };
 
 function appWith(
   signingKey = KEY,
-  firebaseVerifier?: { verify: (t: string) => Promise<{ uid: string; email?: string }> },
+  firebaseVerifier?: { verify: (t: string) => Promise<{ uid: string; email?: string; roles: string[] }> },
   publicPaths?: string[],
   trustLocalhost?: boolean,
 ) {
@@ -172,12 +173,15 @@ function guardCtx(opts: {
   query?: Record<string, string>;
   hostname?: string;
   isPublic?: boolean;
+  roles?: string[];
   websocket?: boolean;
   websocketTopic?: string;
 }) {
-  // A method marked public iff opts.isPublic, read via getHandler().
+  // A method marked public/role-gated, read via getHandler().
   function handler() {}
   if (opts.isPublic) Reflect.defineMetadata(PUBLIC_METADATA_KEY, true, handler);
+  if (opts.roles) Reflect.defineMetadata(ROLES_METADATA_KEY, opts.roles, handler);
+  const store = new Map<string, unknown>();
   return {
     req: {
       header: (n: string) => opts.headers?.[n.toLowerCase()],
@@ -186,6 +190,8 @@ function guardCtx(opts: {
     env: opts.hostname ? { remoteAddr: { hostname: opts.hostname } } : undefined,
     getHandler: () => handler,
     getClass: () => function Ctrl() {},
+    set: (k: string, v: unknown) => store.set(k, v),
+    get: (k: string) => store.get(k),
     websocket: opts.websocket,
     websocketTopic: opts.websocketTopic,
   };
@@ -255,4 +261,47 @@ Deno.test("guard: WS connection accepts a token from the query param", async () 
   const ctx = guardCtx({ hostname: "203.0.113.1", websocket: true, query: { token } });
   // deno-lint-ignore no-explicit-any
   assertEquals(await g.canActivate(ctx as any), true);
+});
+
+// ---- @Roles enforcement via the guard ----
+
+Deno.test("guard: @Roles allows a caller holding the role", async () => {
+  const { g } = guard();
+  const token = await signToken({ source: "u", appName: "test", expiry: future, roles: ["admin"] }, KEY);
+  const ctx = guardCtx({ hostname: "203.0.113.1", roles: ["admin"], headers: { authorization: `Bearer ${token}` } });
+  // deno-lint-ignore no-explicit-any
+  assertEquals(await g.canActivate(ctx as any), true);
+});
+
+Deno.test("guard: @Roles rejects a caller missing the role with 403", async () => {
+  const { g } = guard();
+  const token = await signToken({ source: "u", appName: "test", expiry: future, roles: ["editor"] }, KEY);
+  const ctx = guardCtx({ hostname: "203.0.113.1", roles: ["admin"], headers: { authorization: `Bearer ${token}` } });
+  // deno-lint-ignore no-explicit-any
+  await assertRejects(() => Promise.resolve(g.canActivate(ctx as any)), ForbiddenException);
+});
+
+Deno.test("guard: @Roles without any credential is 401 (auth required first)", async () => {
+  const { g } = guard();
+  const ctx = guardCtx({ hostname: "203.0.113.1", roles: ["admin"] });
+  // deno-lint-ignore no-explicit-any
+  await assertRejects(() => Promise.resolve(g.canActivate(ctx as any)), UnauthorizedException);
+});
+
+Deno.test("guard: @Roles is satisfied by any one of several listed roles", async () => {
+  const { g } = guard();
+  const token = await signToken({ source: "u", appName: "test", expiry: future, roles: ["editor"] }, KEY);
+  const ctx = guardCtx({ hostname: "203.0.113.1", roles: ["admin", "editor"], headers: { authorization: `Bearer ${token}` } });
+  // deno-lint-ignore no-explicit-any
+  assertEquals(await g.canActivate(ctx as any), true);
+});
+
+Deno.test("guard: attaches the resolved identity to the context", async () => {
+  const { g } = guard();
+  const token = await signToken({ source: "svc", appName: "test", expiry: future, roles: ["admin"] }, KEY);
+  const ctx = guardCtx({ hostname: "203.0.113.1", headers: { authorization: `Bearer ${token}` } });
+  // deno-lint-ignore no-explicit-any
+  await g.canActivate(ctx as any);
+  // deno-lint-ignore no-explicit-any
+  assertEquals(getIdentity(ctx as any), { source: "svc", roles: ["admin"] });
 });
