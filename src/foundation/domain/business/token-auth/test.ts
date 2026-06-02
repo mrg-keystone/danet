@@ -1,8 +1,10 @@
-import { assertEquals } from "#assert";
+import { assertEquals, assertRejects } from "#assert";
 import { Hono } from "#hono";
-import { createTokenAuthMiddleware } from "./mod.ts";
+import { UnauthorizedException } from "#danet/core";
+import { createCredentialGuard, createTokenAuthMiddleware } from "./mod.ts";
 import { signToken } from "@foundation/domain/business/token/mod.ts";
 import { INTERNAL_REQUEST_HEADER } from "@foundation/domain/business/backend-client/mod.ts";
+import { PUBLIC_METADATA_KEY } from "@foundation/domain/business/public-route/mod.ts";
 import { Logger } from "@foundation/domain/business/logger/mod.ts";
 
 const KEY = "test-signing-key";
@@ -161,4 +163,96 @@ Deno.test("no signing key ⇒ network requests fail closed, internal key still t
   assertEquals((await fromNetwork(req(bearer(token)))).status, 401); // can't verify
   assertEquals((await fromNetwork(req())).status, 401); // missing token
   assertEquals((await fromNetwork(req(internal(INTERNAL)))).status, 200); // in-process
+});
+
+// ---- createCredentialGuard (the global guard that honors @Public) ----
+
+function guardCtx(opts: {
+  headers?: Record<string, string>;
+  query?: Record<string, string>;
+  hostname?: string;
+  isPublic?: boolean;
+  websocket?: boolean;
+  websocketTopic?: string;
+}) {
+  // A method marked public iff opts.isPublic, read via getHandler().
+  function handler() {}
+  if (opts.isPublic) Reflect.defineMetadata(PUBLIC_METADATA_KEY, true, handler);
+  return {
+    req: {
+      header: (n: string) => opts.headers?.[n.toLowerCase()],
+      query: (n: string) => opts.query?.[n],
+    },
+    env: opts.hostname ? { remoteAddr: { hostname: opts.hostname } } : undefined,
+    getHandler: () => handler,
+    getClass: () => function Ctrl() {},
+    websocket: opts.websocket,
+    websocketTopic: opts.websocketTopic,
+  };
+}
+
+function guard(signingKey = KEY) {
+  const logger = new Logger();
+  logger.configure({ appName: "test" });
+  const sources: (string | undefined)[] = [];
+  const g = createCredentialGuard({ signingKey, internalKey: INTERNAL, logger });
+  return { g, logger, sources };
+}
+
+Deno.test("guard: protected route from network without a credential throws 401", async () => {
+  const { g } = guard();
+  // deno-lint-ignore no-explicit-any
+  await assertRejects(() => Promise.resolve(g.canActivate(guardCtx({ hostname: "203.0.113.1" }) as any)), UnauthorizedException);
+});
+
+Deno.test("guard: @Public route is allowed with no credential", async () => {
+  const { g } = guard();
+  // deno-lint-ignore no-explicit-any
+  assertEquals(await g.canActivate(guardCtx({ hostname: "203.0.113.1", isPublic: true }) as any), true);
+});
+
+Deno.test("guard: @Public ignores an invalid credential (auth-optional)", async () => {
+  const { g } = guard();
+  const ctx = guardCtx({ hostname: "203.0.113.1", isPublic: true, headers: { authorization: "Bearer nonsense" } });
+  // deno-lint-ignore no-explicit-any
+  assertEquals(await g.canActivate(ctx as any), true);
+});
+
+Deno.test("guard: valid token authorizes a protected route and sets source", async () => {
+  const logger = new Logger();
+  logger.configure({ appName: "test" });
+  const g = createCredentialGuard({ signingKey: KEY, internalKey: INTERNAL, logger });
+  const token = await signToken({ source: "svc", appName: "test", expiry: future }, KEY);
+  const ctx = guardCtx({ hostname: "203.0.113.1", headers: { authorization: `Bearer ${token}` } });
+  // run inside a request scope so setSource records
+  const ok = await logger.runInRequest("r", async () => {
+    // deno-lint-ignore no-explicit-any
+    const r = await g.canActivate(ctx as any);
+    return { r, source: logger.currentRequest()?.source };
+  });
+  assertEquals(ok.r, true);
+  assertEquals(ok.source, "svc");
+});
+
+Deno.test("guard: localhost and in-process callers are trusted", async () => {
+  const { g } = guard();
+  // deno-lint-ignore no-explicit-any
+  assertEquals(await g.canActivate(guardCtx({ hostname: "127.0.0.1" }) as any), true);
+  // deno-lint-ignore no-explicit-any
+  assertEquals(await g.canActivate(guardCtx({ hostname: "203.0.113.1", headers: { [INTERNAL_REQUEST_HEADER]: INTERNAL } }) as any), true);
+});
+
+Deno.test("guard: WS message contexts are skipped (already authed at connection)", async () => {
+  const { g } = guard();
+  const ctx = guardCtx({ websocketTopic: "chat", websocket: true });
+  // deno-lint-ignore no-explicit-any
+  assertEquals(await g.canActivate(ctx as any), true);
+});
+
+Deno.test("guard: WS connection accepts a token from the query param", async () => {
+  const token = await signToken({ source: "ws", appName: "test", expiry: future }, KEY);
+  const { g } = guard();
+  const ctx = guardCtx({ hostname: "203.0.113.1", websocket: true, query: { token } });
+  // deno-lint-ignore no-explicit-any
+  assertEquals(await g.canActivate(ctx as any), true);
 });

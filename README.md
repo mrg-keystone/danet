@@ -142,6 +142,33 @@ The resolved identity is attributed to every log emitted during the request (it 
 `source` attribute alongside `requestId`): the token's `source` for a signed token, or the
 user's email (falling back to uid) for a Firebase token.
 
+#### `@Public()` — opt a route out of auth
+
+Auth is enforced as a Danet **global guard**, so it's **deny-by-default** on every controller
+route. Mark a controller or a single handler `@Public()` to make a credential optional there:
+
+```ts
+import { Public } from "@mrg-keystone/danet";
+
+@Controller("inbound")
+class WebhookController {
+  @Public()            // gated by its own webhook secret, not a danet token
+  @Post()
+  receive() { /* ... */ }
+}
+```
+
+- Class-level `@Public()` exempts every route on the controller; method-level exempts one.
+- **Public means auth-optional, not auth-ignored**: a valid credential on a `@Public` route is
+  still verified and its `source` attached for logging — it just isn't required (an invalid one
+  is ignored rather than rejected).
+- It only covers **controllers** (DI routes). The framework's own direct routes (`/docs`,
+  `/_mint`) aren't controllers — they self-gate, so they don't need `@Public`.
+- Grep `@Public` to enumerate every unauthenticated route.
+
+`@Public` is about **authentication** (is a credential required) — not authorization (is this
+identity allowed). For per-identity rules, add your own guard on top.
+
 #### Token shape
 
 A token is a compact JWT (`HS256`) signing these claims:

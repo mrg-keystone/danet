@@ -1,8 +1,10 @@
 import type { Context, MiddlewareHandler } from "#hono";
+import { UnauthorizedException } from "#danet/core";
 import type { Logger } from "@foundation/domain/business/logger/mod.ts";
 import { TokenError, verifyToken } from "@foundation/domain/business/token/mod.ts";
 import { INTERNAL_REQUEST_HEADER } from "@foundation/domain/business/backend-client/mod.ts";
 import type { FirebaseVerifier } from "@foundation/domain/business/firebase-auth/mod.ts";
+import { isPublicContext } from "@foundation/domain/business/public-route/mod.ts";
 
 /**
  * Hono middleware that requires a signed access token on every request — EXCEPT requests from
@@ -89,6 +91,73 @@ export function createTokenAuthMiddleware(config: TokenAuthConfig): MiddlewareHa
 /** Extracts the bearer credential from an `Authorization` header value, if present. */
 export function extractBearer(header: string | undefined): string | undefined {
   return bearer(header);
+}
+
+export interface CredentialGuardConfig {
+  /** The secret signing key (env variable). Empty ⇒ signed tokens cannot be verified. */
+  signingKey: string;
+  /** Process-private key identifying in-process (BackendClient) callers. */
+  internalKey: string;
+  firebaseVerifier?: FirebaseVerifier;
+  logger: Logger;
+  /** Whether loopback callers are trusted without a credential. Defaults to true. */
+  trustLocalhost?: boolean;
+}
+
+/** A Danet guard: returns true to allow, throws to reject. */
+export interface DanetGuard {
+  canActivate(context: Context): boolean | Promise<boolean>;
+}
+
+/**
+ * The global credential guard. Deny-by-default for every controller route, with `@Public()` as
+ * the only opt-out. A request is allowed when it is:
+ *   - `@Public` (credential optional — still verified and attributed if present), or
+ *   - from a trusted origin (in-process key / localhost), or
+ *   - carrying a valid signed or Firebase credential.
+ * Otherwise it throws `UnauthorizedException` (401). WS per-message contexts are skipped — they
+ * were already authorized at the connection handshake.
+ *
+ * This replaces the standalone Hono middleware: as a guard it can read the per-route `@Public`
+ * metadata (via `context.getHandler()` / `getClass()`), which middleware can't see.
+ */
+export function createCredentialGuard(config: CredentialGuardConfig): DanetGuard {
+  const trustLocalhost = config.trustLocalhost ?? true;
+
+  return {
+    async canActivate(context: Context): Promise<boolean> {
+      // deno-lint-ignore no-explicit-any
+      const ctx = context as any;
+      // WS messages run through a synthetic context (no headers/conn info); they were gated at
+      // the connection handshake, so don't re-check here.
+      if (ctx.websocketTopic !== undefined) return true;
+
+      const isPublic = isPublicContext(ctx);
+
+      if (isTrustedOrigin(context, config.internalKey, trustLocalhost)) return true;
+
+      // WS upgrades can't set Authorization, so accept the token from the query there.
+      const credential = extractBearer(context.req.header("authorization")) ??
+        (ctx.websocket ? context.req.query("token") : undefined);
+
+      if (credential) {
+        const identity = await validateCredential(credential, {
+          signingKey: config.signingKey,
+          firebaseVerifier: config.firebaseVerifier,
+        });
+        if (identity) {
+          config.logger.setSource(identity.source);
+          return true;
+        }
+        // Present but invalid: a public route ignores it; a protected route rejects.
+        if (isPublic) return true;
+        throw new UnauthorizedException();
+      }
+
+      if (isPublic) return true;
+      throw new UnauthorizedException();
+    },
+  };
 }
 
 /**

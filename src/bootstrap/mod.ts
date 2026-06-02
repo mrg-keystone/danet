@@ -27,6 +27,10 @@ export {
   docsSeedScript,
   injectDocsScript,
   swaggerShellHtml,
+  Public,
+  PUBLIC_METADATA_KEY,
+  isPublicContext,
+  createCredentialGuard,
 } from "@foundation/mod-root.ts";
 export type {
   LogLevel,
@@ -39,6 +43,8 @@ export type {
   FirebaseVerifier,
   FirebaseVerifierOptions,
   DocsJsonHandlerOptions,
+  CredentialGuardConfig,
+  DanetGuard,
 } from "@foundation/mod-root.ts";
 
 export function safeStart(cb: () => Promise<void>): Promise<void> | undefined {

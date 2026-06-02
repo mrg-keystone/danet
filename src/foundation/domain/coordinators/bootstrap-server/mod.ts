@@ -8,7 +8,8 @@ import { log } from "@foundation/domain/business/logger/mod.ts";
 import { DatadogTransport } from "@foundation/domain/data/datadog/mod.ts";
 import { PostmarkAlerter } from "@foundation/domain/data/postmark/mod.ts";
 import { createRequestLoggingMiddleware } from "@foundation/domain/business/request-logger/mod.ts";
-import { createTokenAuthMiddleware } from "@foundation/domain/business/token-auth/mod.ts";
+import { GLOBAL_GUARD } from "#danet/core";
+import { createCredentialGuard } from "@foundation/domain/business/token-auth/mod.ts";
 import { createMintUi } from "@foundation/domain/business/mint-ui/mod.ts";
 import { createFirebaseVerifier } from "@foundation/domain/business/firebase-auth/mod.ts";
 import {
@@ -125,22 +126,10 @@ export class BootstrapServer {
     const adapter = new DanetHttpAdapter(port);
     // Register the logging middleware first so it wraps every route (controllers + swagger).
     adapter.app.use(createRequestLoggingMiddleware(log));
-    // Token auth runs inside the log scope so a verified token's `source` tags the logs.
-    // A token is required on every network request except localhost and in-process callers.
-    // `/_mint` is governed by its own localhost guard (not token auth), so it bypasses the
-    // credential gate; its guard returns 403 for non-loopback callers. Swagger docs are public
-    // when enabled (also covers the mounted `/api/docs`, since the prefix is stripped first).
-    const publicPaths = swagger ? ["/_mint", "/docs"] : ["/_mint"];
-    adapter.app.use(
-      createTokenAuthMiddleware({
-        signingKey,
-        logger: log,
-        internalKey,
-        firebaseVerifier,
-        trustLocalhost,
-        publicPaths,
-      }),
-    );
+    // Credential auth is enforced as a Danet GLOBAL guard (registered after init below) rather
+    // than a Hono middleware, so it can honor the per-route `@Public()` decorator. Controllers
+    // are deny-by-default; the framework's own direct routes (`/_mint`, `/docs`, docs `/json`)
+    // aren't controllers, so they self-gate (mint localhost guard; docs json token check).
 
     // Localhost-only token minting UI.
     const mintUi = createMintUi({ appName, signingKey, logger: log });
@@ -181,6 +170,19 @@ export class BootstrapServer {
 
     // Initialize eagerly so the in-process `backend` client is usable without listen().
     await adapter.init(module);
+
+    // Register the credential auth as Danet's global guard — it governs every controller route
+    // and honors `@Public()`. A pre-built instance is bound to the GLOBAL_GUARD token.
+    const guard = createCredentialGuard({
+      signingKey,
+      internalKey,
+      firebaseVerifier,
+      logger: log,
+      trustLocalhost,
+    });
+    // deno-lint-ignore no-explicit-any
+    await (adapter.app as any).injector.registerInjectables([{ token: GLOBAL_GUARD, useValue: guard }]);
+
     const backend = createBackendClient(adapter.handler, `http://localhost:${port}`, internalKey);
 
     return new BootstrapServer(module, adapter, backend);

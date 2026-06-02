@@ -20,6 +20,9 @@ export { createMintUi, isLocalRequest } from "@foundation/domain/business/mint-u
 export type { MintUiConfig } from "@foundation/domain/business/mint-ui/mod.ts";
 export { withBasePath } from "@foundation/domain/business/mount/mod.ts";
 export type { FetchHandler } from "@types";
+export { isPublicContext, Public, PUBLIC_METADATA_KEY } from "@foundation/domain/business/public-route/mod.ts";
+export { createCredentialGuard } from "@foundation/domain/business/token-auth/mod.ts";
+export type { CredentialGuardConfig, DanetGuard } from "@foundation/domain/business/token-auth/mod.ts";
 export {
   createFirebaseVerifier,
   FirebaseAuthError,

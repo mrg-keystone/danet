@@ -2,6 +2,7 @@ import "#reflect-metadata";
 import { assertEquals, assertExists, assertStringIncludes } from "#assert";
 import { bootstrapServer } from "./mod.ts";
 import { signToken } from "@foundation/domain/business/token/mod.ts";
+import { Public } from "@foundation/domain/business/public-route/mod.ts";
 import { Controller, Get, Module } from "#danet/core";
 
 @Controller("health")
@@ -16,6 +17,26 @@ class HealthController {
   controllers: [HealthController],
 })
 class AppModule {}
+
+@Controller("secret")
+class SecretController {
+  @Get()
+  data() {
+    return { secret: true };
+  }
+}
+
+@Controller("open")
+class OpenController {
+  @Public()
+  @Get()
+  data() {
+    return { open: true };
+  }
+}
+
+@Module({ controllers: [SecretController, OpenController] })
+class GuardModule {}
 
 let portCounter = 7000;
 
@@ -52,6 +73,43 @@ Deno.test("bootstrapServer - enables swagger by default", async () => {
   assertEquals(response.status, 200);
   assertEquals(html.includes("<html"), true);
   await server.stop();
+});
+
+Deno.test("global guard: deny-by-default for controllers, @Public exempts", async () => {
+  Deno.env.set("MANUAL_KEY", "guard-test-key");
+  try {
+    const port = portCounter++;
+    const server = await bootstrapServer("test-app", GuardModule, { port, swagger: false });
+
+    const remote = { remoteAddr: { transport: "tcp", hostname: "203.0.113.5", port: 1 } };
+    const loopback = { remoteAddr: { transport: "tcp", hostname: "127.0.0.1", port: 1 } };
+    // deno-lint-ignore no-explicit-any
+    const net = (path: string, init?: RequestInit) => server.handler(new Request(`http://app${path}`, init), remote as any);
+
+    // Protected controller: network caller without a credential → 401.
+    assertEquals((await net("/secret")).status, 401);
+
+    // @Public controller: reachable with no credential.
+    const open = await net("/open");
+    assertEquals(open.status, 200);
+    assertEquals((await open.json()).open, true);
+
+    // Protected controller with a valid token → 200.
+    const token = await signToken(
+      { source: "svc", appName: "test-app", expiry: 4_102_444_800 },
+      "guard-test-key",
+    );
+    const ok = await net("/secret", { headers: { authorization: `Bearer ${token}` } });
+    assertEquals(ok.status, 200);
+    assertEquals((await ok.json()).secret, true);
+
+    // Localhost is trusted → no credential needed.
+    // deno-lint-ignore no-explicit-any
+    const local = await server.handler(new Request("http://app/secret"), loopback as any);
+    assertEquals(local.status, 200);
+  } finally {
+    Deno.env.delete("MANUAL_KEY");
+  }
 });
 
 Deno.test("mounted handler: /_mint reachable from localhost when conn info is forwarded", async () => {
