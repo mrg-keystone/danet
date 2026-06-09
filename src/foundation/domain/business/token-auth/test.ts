@@ -316,3 +316,33 @@ Deno.test("guard: attaches the resolved identity to the context", async () => {
   // deno-lint-ignore no-explicit-any
   assertEquals(getIdentity(ctx as any), { source: "svc", roles: ["admin"] });
 });
+
+// ---- ?token query-param credential (now accepted for network HTTP, not just WS) ----
+
+Deno.test("middleware: a valid token in the ?token query param authorizes a network request", async () => {
+  const { fromNetwork, sources } = appWith();
+  const token = await signToken({ source: "link", appName: "test", expiry: future }, KEY);
+  const res = await fromNetwork(new Request(`http://app/protected?token=${token}`));
+  assertEquals(res.status, 200);
+  assertEquals(sources[0], "link");
+});
+
+Deno.test("middleware: an invalid ?token is rejected with 401", async () => {
+  const res = await appWith().fromNetwork(new Request("http://app/protected?token=garbage"));
+  assertEquals(res.status, 401);
+});
+
+Deno.test("guard: a network request accepts a valid token from the ?token query param", async () => {
+  const token = await signToken({ source: "link", appName: "test", expiry: future }, KEY);
+  const { g } = guard();
+  const ctx = guardCtx({ hostname: "203.0.113.1", query: { token } });
+  // deno-lint-ignore no-explicit-any
+  assertEquals(await g.canActivate(ctx as any), true);
+});
+
+Deno.test("guard: an invalid ?token on a protected route is rejected (401)", async () => {
+  const { g } = guard();
+  const ctx = guardCtx({ hostname: "203.0.113.1", query: { token: "garbage" } });
+  // deno-lint-ignore no-explicit-any
+  await assertRejects(() => Promise.resolve(g.canActivate(ctx as any)), UnauthorizedException);
+});

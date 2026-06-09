@@ -56,7 +56,7 @@ export function createTokenAuthMiddleware(config: TokenAuthConfig): MiddlewareHa
     if (isTrustedOrigin(c, internalKey, trustLocalhost)) return next();
     if (isPublicPath(c.req.path, publicPaths)) return next();
 
-    const token = bearer(c.req.header("authorization"));
+    const token = bearer(c.req.header("authorization")) ?? c.req.query("token");
     if (!token) return unauthorized(c, "Missing credentials.");
 
     // 1) Signed service token.
@@ -147,9 +147,11 @@ export function createCredentialGuard(config: CredentialGuardConfig): DanetGuard
 
       if (isTrustedOrigin(context, config.internalKey, trustLocalhost)) return true;
 
-      // WS upgrades can't set Authorization, so accept the token from the query there.
+      // Credential from `Authorization: Bearer`, or the `?token=` query param. The query form
+      // lets a plain link / WS upgrade (which can't set headers) carry the token; a browser
+      // client should seed it once from the query and then send it as a header thereafter.
       const credential = extractBearer(context.req.header("authorization")) ??
-        (ctx.websocket ? context.req.query("token") : undefined);
+        context.req.query("token");
 
       let identity: Identity | null = null;
       if (credential) {

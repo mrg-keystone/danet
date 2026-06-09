@@ -11,6 +11,9 @@ const REDACTED_HEADERS = new Set([
   "set-cookie",
   INTERNAL_REQUEST_HEADER,
 ]);
+// Query params carrying a credential — redacted so a `?token=` (accepted by the auth guard for
+// link/seed flows) never lands in logs.
+const REDACTED_QUERY = new Set(["token", "access_token"]);
 const LOGGABLE_BODY = /(application\/json|text\/)/i;
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_REQUEST_ID_LENGTH = 128;
@@ -32,7 +35,7 @@ export function createRequestLoggingMiddleware(logger: Logger): MiddlewareHandle
       logger.lifecycle("ingress", "info", method, route, {
         routePath: c.req.routePath,
         headers: headersToObject(c.req.raw.headers),
-        query: c.req.query(),
+        query: redactQuery(c.req.query()),
         body: await readBody(c.req.raw.clone()),
       });
 
@@ -71,6 +74,14 @@ function resolveRequestId(c: Context): string {
 function sanitizeRequestId(value: string): string {
   const cleaned = value.replace(UNSAFE_REQUEST_ID, "").slice(0, MAX_REQUEST_ID_LENGTH);
   return cleaned.length > 0 ? cleaned : crypto.randomUUID();
+}
+
+function redactQuery(query: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(query)) {
+    out[key] = REDACTED_QUERY.has(key.toLowerCase()) ? "***" : value;
+  }
+  return out;
 }
 
 function headersToObject(headers: Headers): Record<string, string> {
