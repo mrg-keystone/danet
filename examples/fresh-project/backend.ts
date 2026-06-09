@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { bootstrapServer, Public } from "@mrg-keystone/danet";
+import { bootstrapServer, Public } from "@mrg-keystone/keep";
 import { Controller, Get, Module, NotFoundException, Param } from "@danet/core";
 
 interface User {

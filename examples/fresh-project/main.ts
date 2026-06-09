@@ -1,5 +1,5 @@
 import { App, staticFiles } from "fresh";
-import { withBasePath } from "@mrg-keystone/danet";
+import { withBasePath } from "@mrg-keystone/keep";
 import { api } from "./backend.ts";
 import { define, type State } from "./utils.ts";
 

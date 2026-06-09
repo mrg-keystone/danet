@@ -1,7 +1,7 @@
 {
-  "name": "@mrg-keystone/danet",
-  "version": "1.12.0",
-  "description": "Core module for Danet framework",
+  "name": "@mrg-keystone/keep",
+  "version": "1.13.0",
+  "description": "Opinionated Deno backend framework: DI bootstrap, token/Firebase auth & identity, auto Swagger docs, in-process API client, and Fresh frontend embedding. Built on @danet/core.",
   "license": "MIT",
   "exports": {
     ".": "./src/bootstrap/mod.ts"
@@ -16,7 +16,7 @@
   "imports": {
     "#reflect-metadata": "npm:reflect-metadata@0.1.13",
     "reflect-metadata": "npm:reflect-metadata@0.1.13",
-    "@mrg-keystone/danet": "./src/bootstrap/mod.ts",
+    "@mrg-keystone/keep": "./src/bootstrap/mod.ts",
     "@danet/core": "jsr:@danet/core@2",
     "#handlebars": "npm:handlebars@^4.7.8",
     "#openapi3-ts": "npm:openapi3-ts@4.5.0",

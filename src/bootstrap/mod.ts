@@ -37,6 +37,7 @@ export {
   getIdentity,
   IDENTITY_CONTEXT_KEY,
   scopeRoles,
+  noCodeCache,
 } from "@foundation/mod-root.ts";
 export type {
   LogLevel,
@@ -52,6 +53,9 @@ export type {
   CredentialGuardConfig,
   DanetGuard,
   Identity,
+  NoCodeCacheContext,
+  NoCodeCacheMiddleware,
+  NoCodeCacheOptions,
 } from "@foundation/mod-root.ts";
 
 export function safeStart(cb: () => Promise<void>): Promise<void> | undefined {

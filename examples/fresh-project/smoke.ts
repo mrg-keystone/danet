@@ -1,4 +1,4 @@
-import { signToken } from "@mrg-keystone/danet";
+import { signToken } from "@mrg-keystone/keep";
 
 /**
  * One-command smoketest for the Danet ↔ Fresh integration. Boots the real Fresh dev server

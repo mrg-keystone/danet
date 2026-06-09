@@ -1,13 +1,14 @@
-# @mrg-keystone/danet
+# @mrg-keystone/keep
 
-Core module for the Danet framework. Provides server bootstrapping with automatic
-OpenAPI/Swagger documentation generation and request-scoped structured logging to Datadog.
+An opinionated Deno backend framework built on [`@danet/core`](https://jsr.io/@danet/core). It bundles server bootstrapping with
+automatic OpenAPI/Swagger docs, a unified auth/identity layer (signed tokens, Firebase, roles), an in-process API client with a
+private-key trust channel, request-scoped structured logging to Datadog, and first-class Fresh frontend embedding.
 
 ## Quick Start
 
 ```typescript
 import "reflect-metadata";
-import { bootstrapServer, log, SwaggerDescription } from "@mrg-keystone/danet";
+import { bootstrapServer, log, SwaggerDescription } from "@mrg-keystone/keep";
 import { Controller, Get, Module } from "@danet/core";
 
 @Controller("health")
@@ -173,11 +174,11 @@ user's email (falling back to uid) for a Firebase token.
 
 #### `@Public()` — opt a route out of auth
 
-Auth is enforced as a Danet **global guard**, so it's **deny-by-default** on every controller
+Auth is enforced as a **global guard**, so it's **deny-by-default** on every controller
 route. Mark a controller or a single handler `@Public()` to make a credential optional there:
 
 ```ts
-import { Public } from "@mrg-keystone/danet";
+import { Public } from "@mrg-keystone/keep";
 
 @Controller("inbound")
 class WebhookController {
@@ -204,7 +205,7 @@ Limit a controller or handler to callers holding **at least one** of the listed 
 global guard enforces it right after authentication:
 
 ```ts
-import { Roles } from "@mrg-keystone/danet";
+import { Roles } from "@mrg-keystone/keep";
 
 @Controller("users")
 class UsersController {
@@ -343,7 +344,7 @@ working `client.ts` + `/probe` page.
 The primitives are exported for use outside the UI:
 
 ```ts
-import { signToken, verifyToken, TokenError } from "@mrg-keystone/danet";
+import { signToken, verifyToken, TokenError } from "@mrg-keystone/keep";
 
 const token = await signToken(
   { source: "ci-runner", appName: "my-api", expiry: Math.floor(Date.now() / 1000) + 3600 },
@@ -364,7 +365,7 @@ try {
 The verifier is also exported if you need it standalone:
 
 ```ts
-import { createFirebaseVerifier, FirebaseAuthError } from "@mrg-keystone/danet";
+import { createFirebaseVerifier, FirebaseAuthError } from "@mrg-keystone/keep";
 
 const firebase = createFirebaseVerifier({ projectId: Deno.env.get("FIREBASE_PROJECT_ID")! });
 
@@ -441,7 +442,7 @@ Import `log` anywhere and call `log.<level>(message, data?)`. Inside a request i
 ingress/egress) and `data` becomes the structured attributes:
 
 ```typescript
-import { log } from "@mrg-keystone/danet";
+import { log } from "@mrg-keystone/keep";
 
 class UsersService {
   create(dto: CreateUser) {
@@ -525,7 +526,7 @@ Bootstrap once in a shared module (init only — it does **not** `listen()`):
 ```ts
 // backend.ts
 import "reflect-metadata";
-import { bootstrapServer } from "@mrg-keystone/danet";
+import { bootstrapServer } from "@mrg-keystone/keep";
 import { AppModule } from "./app.module.ts";
 
 export const api = await bootstrapServer("my-api", AppModule);
@@ -561,7 +562,7 @@ strips the prefix so the root-registered routes still match). Register it **befo
 ```ts
 // main.ts  (Fresh 2 entry)
 import { App, staticFiles } from "fresh";
-import { withBasePath } from "@mrg-keystone/danet";
+import { withBasePath } from "@mrg-keystone/keep";
 import { api } from "./backend.ts";
 import type { State } from "./utils.ts";
 

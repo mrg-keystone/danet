@@ -1,7 +1,7 @@
-# Danet in a Fresh 2 app
+# Keep in a Fresh 2 app
 
-A runnable Fresh 2 app that embeds a Danet backend. One Deno process serves the Fresh UI at `/`,
-exposes the **token-gated** Danet API at `/api/*` for network callers, and lets the frontend call
+A runnable Fresh 2 app that embeds a Keep backend. One Deno process serves the Fresh UI at `/`,
+exposes the **token-gated** Keep API at `/api/*` for network callers, and lets the frontend call
 the backend **in-process** (no token, no network hop). Works in `deno task dev` and the production
 build.
 
@@ -12,7 +12,7 @@ build.
 | SSR calling the API in-process (no token) | `routes/users.tsx` → `ctx.state.api.fetch("/users")` |
 | Token-gated network API at `/api/*` | `main.ts` → `withBasePath("/api", api.handler)` |
 | `@Public()` route open on the network | `backend.ts` → `HealthController` |
-| Token via `Authorization` header **or** `?token=` | Danet guard |
+| Token via `Authorization` header **or** `?token=` | Keep guard |
 | Browser: seed token from `?token=`, auto-inject, drop on 401 | `client.ts` + `routes/probe.tsx` |
 | Flip localhost-trust at runtime to test the gate | `main.ts` → `/trust` |
 
@@ -41,7 +41,7 @@ tokens short — they ride in a URL until the browser moves them to a header:
 
 ```sh
 MANUAL_KEY=dev-secret deno run -A - <<'EOF'
-import { signToken } from "@mrg-keystone/danet";
+import { signToken } from "@mrg-keystone/keep";
 const expiry = Math.floor(Date.now() / 1000) + 3600; // 1 hour
 console.log(await signToken({ source: "demo", appName: "fresh-project", expiry }, Deno.env.get("MANUAL_KEY")));
 EOF
@@ -78,28 +78,28 @@ Two things that are easy to get wrong: register the `/api/*` mount **before** `.
 **forward `ctx.info`** to the mount (it carries `remoteAddr`, which the localhost-trust check
 needs — drop it and localhost stops being recognized).
 
-## Note for consumers: this example links local Danet
+## Note for consumers: this example links local Keep
 
-`deno.json` imports Danet from JSR **exactly as you would**, and adds **one** monorepo-only line
+`deno.json` imports Keep from JSR **exactly as you would**, and adds **one** monorepo-only line
 that overrides it with this repo's local source so the example tracks unreleased changes:
 
 ```jsonc
 "links": ["../.."],   // ← MONOREPO-ONLY: delete this in your own app
 "imports": {
-  "@mrg-keystone/danet": "jsr:@mrg-keystone/danet@^1.12",
+  "@mrg-keystone/keep": "jsr:@mrg-keystone/keep@^1.12",
   "@danet/core": "jsr:@danet/core@2",
   "reflect-metadata": "npm:reflect-metadata@0.1.13"
 },
 "compilerOptions": { "experimentalDecorators": true, "emitDecoratorMetadata": true }
 ```
 
-`links` (Deno's local-package link, formerly `patch`) makes Danet resolve **its own** dependencies
+`links` (Deno's local-package link, formerly `patch`) makes Keep resolve **its own** dependencies
 from **its own** `deno.json` — so the consumer config stays these few lines and behaves just like
 the published package (no symlink, no copied `#danet/*`/`@foundation/*` specifiers). In your app,
 delete the `links` line; everything else (`backend.ts`, `main.ts`, the routes, `client.ts`) is
 identical.
 
-> ⚠️ **Requires Danet ≥ 1.12.0.** The bundler/Fresh fix (lazy-loading `handlebars`) and the
+> ⚠️ **Requires Keep ≥ 1.12.0.** The bundler/Fresh fix (lazy-loading `handlebars`) and the
 > `?token` support land in **1.12.0**. The currently-published **1.11.0 will crash under Vite SSR**
 > (`Cannot assign to read only property '__esModule'`). Publish 1.12.0 (`deno publish`) before
 > pointing a real app at the JSR package. This example sidesteps that by linking local source.
