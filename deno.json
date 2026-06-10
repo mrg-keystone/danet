@@ -11,6 +11,8 @@
   },
   "tasks": {
     "test": "deno test -A --unstable-raw-imports",
+    "test:browser": "KEEP_BROWSER=1 deno test -A --unstable-raw-imports src/foundation/domain/business/emulator-ui/browser.test.ts",
+    "test:smoke": "KEEP_PLAYWRIGHT_SMOKE=1 deno test -A --unstable-raw-imports src/foundation/domain/coordinators/exercise-harness/smk.test.ts",
     "example": "deno run -A examples/in-process-client/main.ts"
   },
   "imports": {
