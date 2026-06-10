@@ -61,7 +61,11 @@ jobs:
             echo "bumped=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          LATEST="$(curl -fsS https://jsr.io/@mrg-keystone/keep/meta.json | jq -r .latest)"
+          # api.jsr.io is authoritative; jsr.io/meta.json is CDN-cached and can lag
+          # several minutes behind a fresh publish, which would derive a wrong bump.
+          LATEST="$(curl -fsS -H "Authorization: Bearer $JSR_TOKEN" \
+            'https://api.jsr.io/scopes/mrg-keystone/packages/keep/versions?limit=100' \
+            | jq -r '(.items // .) | .[]?.version' | sort -V | tail -1)"
           BUMP=patch
           BEFORE="${{ github.event.before }}"
           AFTER="${{ github.event.after }}"
@@ -94,13 +98,14 @@ jobs:
           deno publish --token "$JSR_TOKEN" --allow-dirty --no-provenance --allow-slow-types &
           PUB_PID=$!
           # Two failure modes hide behind a silent "Publishing ...":
-          #   - a slow upload (don't kill too early; 10 min window), and
+          #   - slow server-side processing (1.14.0's task took 10m48s — a 10 min
+          #     window missed it by 18s; use 20 min), and
           #   - a server-side publishing-task FAILURE that the deno publish CLI
           #     never reports — it waits forever on a task that already failed
           #     (this is how 1.13.6's invalid-subpath error looked like a hang).
           # So poll the version AND the publishing-task status, and surface the
           # task's real error immediately instead of timing out blind.
-          for i in $(seq 1 300); do
+          for i in $(seq 1 600); do
             if curl -fsS "$VURL" >/dev/null 2>&1; then
               echo "✓ @mrg-keystone/keep@$VER is live on JSR"
               kill "$PUB_PID" 2>/dev/null || true
