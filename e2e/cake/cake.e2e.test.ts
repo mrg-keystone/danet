@@ -11,12 +11,23 @@ let port = 8790;
 
 const CHAIN = ["driveToStore", "groceryShop", "checkout", "mixIngredients", "bake", "cut"];
 
+// The exact HTTP routes the generated controller should expose, in any order — the contract the
+// spec/Swagger surface must hold. `CHAIN` (above) is the matching source of truth for the count.
+const EXPECTED_PATHS = [
+  "/http/drive-to-store",
+  "/http/grocery-shop",
+  "/http/checkout",
+  "/http/mix-ingredients",
+  "/http/bake",
+  "/http/cut",
+];
+
 // Stage 1/2 — the generated controller exposes 6 ordered, chained, schema'd endpoints.
 Deno.test("cake e2e — 6 endpoints with schemas + x-keep-process chain", async () => {
   const api = await bootstrapServer("cake", httpModule, { port: port++ });
   try {
     const doc = api.docs[0].doc;
-    assertEquals(Object.keys(doc.paths ?? {}).length, 6);
+    assertEquals(Object.keys(doc.paths ?? {}).sort(), [...EXPECTED_PATHS].sort());
     assertExists(doc.components?.schemas?.ArrivalDto);
     assertExists(doc.components?.schemas?.SlicesDto);
     // Last step's process metadata is fully derived from the DTO field graph.
@@ -63,7 +74,7 @@ Deno.test("cake e2e — emulator page, Swagger UI, and raw spec are all served",
     const spec = await fetch(`${base}/docs/cake/json`); // loopback is trusted, so it's served
     assertEquals(spec.status, 200);
     const doc = await spec.json();
-    assertEquals(Object.keys(doc.paths).length, 6);
+    assertEquals(Object.keys(doc.paths).sort(), [...EXPECTED_PATHS].sort());
   } finally {
     await api.stop();
   }
@@ -170,7 +181,7 @@ Deno.test({
 
       // ── All six steps green ──────────────────────────────────────────────────
       await t.step("all six steps show a checkmark", async () => {
-        assertEquals(await page.locator("li .dot.ok").count(), 6);
+        assertEquals(await page.locator("li .dot.ok").count(), CHAIN.length);
       });
 
       // ── "Run all in order" replays the whole chain from a fresh load ──────────
@@ -178,7 +189,7 @@ Deno.test({
         await page.reload();
         await page.locator("#runall").click();
         await page.waitForFunction(
-          "document.querySelectorAll('li .dot.ok').length === 6",
+          `document.querySelectorAll('li .dot.ok').length === ${CHAIN.length}`,
           { timeout: 10000 },
         );
       });
