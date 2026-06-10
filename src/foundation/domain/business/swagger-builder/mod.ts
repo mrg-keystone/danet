@@ -12,9 +12,9 @@ export class SwaggerBuilder {
   constructor(...filters: string[]) {
     this.crawler = new Crawler(...filters);
     this.documentBuilder = new DanetDocumentBuilder();
+    // particleCount left at the builder's modest default — 100 just bloated every rendered page.
     this.indexPageBuilder = new IndexPageBuilder({
       prefix: "/docs/",
-      particleCount: 100,
     });
   }
 

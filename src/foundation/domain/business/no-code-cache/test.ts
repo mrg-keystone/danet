@@ -1,7 +1,7 @@
 import { assert, assertEquals } from "#assert";
 import { noCodeCache } from "./mod.ts";
 
-const NO_STORE = "Cache-Control";
+const CACHE_CONTROL = "Cache-Control";
 
 /** Drives the middleware with a request URL and a canned downstream response. */
 async function run(
@@ -17,7 +17,7 @@ async function run(
 }
 
 function busted(res: Response): boolean {
-  return res.headers.get(NO_STORE)?.includes("no-store") === true &&
+  return res.headers.get(CACHE_CONTROL)?.includes("no-store") === true &&
     res.headers.get("Surrogate-Control") === "no-store" &&
     !res.headers.has("ETag");
 }
@@ -61,7 +61,7 @@ Deno.test("leaves a non-code response (image) cacheable and untouched", async ()
       headers: { "content-type": "image/png", ETag: '"img-1"' },
     }),
   );
-  assertEquals(out.headers.get(NO_STORE), null);
+  assertEquals(out.headers.get(CACHE_CONTROL), null);
   assertEquals(out.headers.get("ETag"), '"img-1"', "ETag must be preserved");
   assert(!busted(out));
 });
@@ -85,6 +85,45 @@ Deno.test("respects custom extensions (merged with defaults)", async () => {
     { extensions: [".xml"] },
   );
   assert(busted(css));
+});
+
+Deno.test("busts by content-type alone (css/javascript/wasm) with no matching extension", async () => {
+  // Paths have no code extension, so only the content-type branch can match.
+  const css = await run(
+    "http://app/styles",
+    new Response("body{}", { headers: { "content-type": "text/css" } }),
+  );
+  const js = await run(
+    "http://app/runtime",
+    new Response("0", { headers: { "content-type": "application/javascript" } }),
+  );
+  const wasm = await run(
+    "http://app/mod",
+    new Response("\0", { headers: { "content-type": "application/wasm" } }),
+  );
+  assert(busted(css));
+  assert(busted(js));
+  assert(busted(wasm));
+});
+
+Deno.test("passes through a non-code path with no content-type (default branch)", async () => {
+  const out = await run(
+    "http://app/download",
+    new Response("data", { headers: { ETag: '"d"' } }), // no content-type, no code extension
+  );
+  assertEquals(out.headers.get(CACHE_CONTROL), null);
+  assertEquals(out.headers.get("ETag"), '"d"', "ETag preserved on pass-through");
+  assert(!busted(out));
+});
+
+Deno.test("a 304 under /_fresh/ stays valid when re-wrapped (null body invariant)", async () => {
+  // 304 responses carry no body; mutableResponse must re-wrap them without throwing.
+  const out = await run(
+    "http://app/_fresh/island-chunk",
+    new Response(null, { status: 304, headers: { ETag: '"v1"' } }),
+  );
+  assertEquals(out.status, 304);
+  assert(busted(out)); // /_fresh/ → no-store, ETag stripped
 });
 
 Deno.test("preserves the response body and status while mutating headers", async () => {

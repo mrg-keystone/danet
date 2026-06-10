@@ -7,6 +7,15 @@ const DEFAULT_CODE_EXTENSIONS = [
   ".wasm",
 ];
 
+// Content-type substrings that mark a response as code-like (pages, APIs, partial data, …).
+const CODE_CONTENT_TYPES = [
+  "text/html",
+  "text/css",
+  "javascript",
+  "application/json",
+  "application/wasm",
+];
+
 /**
  * The slice of a Fresh middleware context this helper reads. Declared structurally (rather than
  * importing Fresh's `FreshContext`) so the package stays Fresh-agnostic — exactly like
@@ -85,14 +94,8 @@ function isCodeLike(
     if (path.endsWith(ext)) return true;
   }
 
-  // Pages / APIs / partial data / code-ish responses
-  if (contentType.includes("text/html")) return true;
-  if (contentType.includes("text/css")) return true;
-  if (contentType.includes("javascript")) return true;
-  if (contentType.includes("application/json")) return true;
-  if (contentType.includes("application/wasm")) return true;
-
-  return false;
+  // Pages / APIs / partial data / code-ish responses, by content-type.
+  return CODE_CONTENT_TYPES.some((t) => contentType.includes(t));
 }
 
 function applyNoCacheHeaders(headers: Headers) {

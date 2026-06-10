@@ -60,7 +60,7 @@ Deno.test("POST mints a verifiable token", async () => {
   assertEquals(res.status, 200);
 
   const page = await res.text();
-  const token = page.match(/<pre>([^<]+)<\/pre>/)?.[1];
+  const token = page.match(/<pre id="token">([^<]+)<\/pre>/)?.[1];
   assertEquals(typeof token, "string");
 
   const payload = await verifyToken(token!, KEY);
@@ -82,7 +82,7 @@ Deno.test("POST with 'never expires' mints a token with no expiry", async () => 
   assertEquals(res.status, 200);
 
   const page = await res.text();
-  const token = page.match(/<pre>([^<]+)<\/pre>/)?.[1];
+  const token = page.match(/<pre id="token">([^<]+)<\/pre>/)?.[1];
   const payload = await verifyToken(token!, KEY, 10_000_000_000); // far future — still valid
   assertEquals(payload.expiry, undefined);
   assertStringIncludes(page, "Expires: never");

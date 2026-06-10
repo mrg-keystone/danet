@@ -27,10 +27,17 @@ app.get("/trust", (ctx) => {
   const set = new URL(ctx.req.url).searchParams.get("set");
   if (set === "on") trusted = true;
   else if (set === "off") trusted = false;
+  return new Response(renderTrustPage(trusted), {
+    headers: { "content-type": "text/html; charset=utf-8" },
+  });
+});
+
+/** The /trust demo page: shows the current localhost-trust state and links to flip it. */
+function renderTrustPage(trusted: boolean): string {
   const state = trusted
     ? "ON — localhost is trusted, /api needs NO token"
     : "OFF — /api requires a Bearer token (or a @Public route)";
-  const html = `<!doctype html><html><head><meta charset="utf-8">
+  return `<!doctype html><html><head><meta charset="utf-8">
 <title>localhost trust: ${trusted ? "ON" : "OFF"}</title>
 <style>body{font:16px/1.5 system-ui;max-width:42rem;margin:3rem auto;padding:0 1rem}
 a{display:inline-block;margin:.2rem .6rem .2rem 0}code{background:#eee;padding:.1rem .3rem;border-radius:3px}</style>
@@ -46,8 +53,7 @@ a{display:inline-block;margin:.2rem .6rem .2rem 0}code{background:#eee;padding:.
   <a href="/users">/users</a> (SSR, in-process — always works)
 </p>
 </body></html>`;
-  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
-});
+}
 // --------------------------------------------------------------------------------------------
 
 // Include file-system based routes here

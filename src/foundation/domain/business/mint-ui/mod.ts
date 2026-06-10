@@ -130,7 +130,7 @@ function formPage(config: MintUiConfig): string {
   <label>source <span class="hint">— attributed in the receiving app's logs</span></label>
   <input name="source" placeholder="ci-runner" autofocus required>
   <label>appName</label>
-  <input name="appName" value="${escapeAttr(config.appName)}" required>
+  <input name="appName" value="${escapeHtml(config.appName)}" required>
   <label class="check"><input type="checkbox" name="neverExpires" id="neverExpires"> never expires</label>
   <label>expires in <span class="hint">— seconds from now</span></label>
   <input name="expiresIn" id="expiresIn" type="number" min="1" step="1" value="${DEFAULT_TTL_SECONDS}">
@@ -186,7 +186,7 @@ function resultPage(
 <p id="copyStatus" class="hint"></p>
 
 <label>Token</label>
-<pre>${escapeHtml(token)}</pre>
+<pre id="token">${escapeHtml(token)}</pre>
 
 <label>Docs link <span class="hint">— opens the API docs with this token</span></label>
 <pre id="docsLink"></pre>
@@ -194,8 +194,15 @@ function resultPage(
 <button type="button" id="copyToken">Copy token</button>
 
 <p><a href="">Mint another</a></p>
-<script>
-(function(){
+<script>${resultPageScript(token, expiry)}</script>`,
+  );
+}
+
+/** Client script for the result page: shows expiry (Eastern), builds the docs link, wires the
+ *  copy buttons, and auto-copies the token. Kept as a named block (like expiryPreviewScript) so
+ *  the result-page builder above stays readable. */
+function resultPageScript(token: string, expiry: number | undefined): string {
+  return `(function(){
   var token = ${JSON.stringify(token)};
   var expiry = ${expiry === undefined ? "null" : expiry};
   // Show the expiry in Eastern Time (or "never").
@@ -231,16 +238,10 @@ function resultPage(
   }).catch(function(){
     status.textContent = "Press “Copy token” to copy it to your clipboard.";
   });
-})();
-</script>`,
-  );
+})();`;
 }
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (ch) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]!));
-}
-
-function escapeAttr(value: string): string {
-  return escapeHtml(value);
 }

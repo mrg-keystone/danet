@@ -4,11 +4,14 @@ import { INTERNAL_REQUEST_HEADER } from "@foundation/domain/business/backend-cli
 
 const REQUEST_ID_HEADERS = ["x-request-id", "x-correlation-id"];
 // Redact credentials so they never land in logs — including the process-private in-process key,
-// which would otherwise let anyone with log access forge in-process trust.
+// which would otherwise let anyone with log access forge in-process trust. Matched
+// case-insensitively (see headersToObject), so list lowercase.
 const REDACTED_HEADERS = new Set([
   "authorization",
+  "proxy-authorization",
   "cookie",
   "set-cookie",
+  "x-api-key",
   INTERNAL_REQUEST_HEADER,
 ]);
 // Query params carrying a credential — redacted so a `?token=` (accepted by the auth guard for

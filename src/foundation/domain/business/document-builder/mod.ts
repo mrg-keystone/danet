@@ -4,7 +4,8 @@ import { Type } from "@types";
 import { DanetApplication, Module } from "#danet/core";
 import { getSwaggerDescription } from "@foundation/domain/business/swagger-description/mod.ts";
 
-const dummy = (): ReturnType<SpecBuilder["build"]> => new SpecBuilder().build();
+// Type-only helper: the shape returned by SpecBuilder.build(), used to type Spec.value.
+const emptySpec = (): ReturnType<SpecBuilder["build"]> => new SpecBuilder().build();
 type Document = Awaited<ReturnType<typeof SwaggerModule.createDocument>>;
 
 class Spec {
@@ -13,7 +14,7 @@ class Spec {
   }
   constructor(
     public module: Type,
-    public value: ReturnType<typeof dummy>,
+    public value: ReturnType<typeof emptySpec>,
   ) {}
 }
 
@@ -33,18 +34,23 @@ export class DanetDocumentBuilder {
 
   private async setupFacade(mod: Type) {
     const meta = Reflect.getMetadata("module", mod) ?? {};
-    const dat = {
+    // A standalone copy of the module's metadata with `imports` stripped, so we can build the
+    // Swagger doc for THIS module in isolation (without recursively pulling in its imports).
+    const facadeMetadata = {
       ...meta,
       imports: [],
       controllers: meta.controllers ? [...meta.controllers] : undefined,
       providers: meta.providers ? [...meta.providers] : undefined,
       exports: meta.exports ? [...meta.exports] : undefined,
     };
-    @Module(dat)
+    @Module(facadeMetadata)
     class FacadeModule {}
     const origLog = console.log;
     const host = new DanetApplication();
     try {
+      // DanetApplication.init() prints banner/init noise to console.log; silence it just for
+      // this throwaway facade init so building docs doesn't spam the host app's logs. Restored
+      // in the finally below (and on throw).
       console.log = () => {};
       await host.init(FacadeModule);
       return host;

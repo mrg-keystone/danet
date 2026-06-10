@@ -56,6 +56,10 @@ export function createTokenAuthMiddleware(config: TokenAuthConfig): MiddlewareHa
     if (isTrustedOrigin(c, internalKey, trustLocalhost)) return next();
     if (isPublicPath(c.req.path, publicPaths)) return next();
 
+    // A bearer credential, or the `?token=` query param. The query form is a one-time SEED for
+    // links / WS upgrades that can't set headers — prefer short-lived, single-use tokens there:
+    // unlike the header, a `?token=` can leak via Referer and intermediary proxy logs, which the
+    // request-logger redaction cannot reach. Clients should re-send it as a header thereafter.
     const token = bearer(c.req.header("authorization")) ?? c.req.query("token");
     if (!token) return unauthorized(c, "Missing credentials.");
 
@@ -75,18 +79,31 @@ export function createTokenAuthMiddleware(config: TokenAuthConfig): MiddlewareHa
     }
 
     // 2) Firebase Auth ID token (e.g. from the browser/frontend).
-    if (firebaseVerifier) {
-      try {
-        const claims = await firebaseVerifier.verify(token);
-        logger.setSource(claims.email ?? claims.uid);
-        return await next();
-      } catch {
-        // fall through to the generic rejection
-      }
+    if (firebaseVerifier && await tryVerifyFirebase(token, firebaseVerifier, logger)) {
+      return await next();
     }
 
     return unauthorized(c, "Invalid or expired credentials.");
   };
+}
+
+/**
+ * Verifies a Firebase ID token and attributes the caller; returns true on success, false if the
+ * token isn't a valid Firebase credential. Attribution falls back to a fixed label so a token
+ * carrying neither `email` nor `uid` never records a blank source.
+ */
+async function tryVerifyFirebase(
+  token: string,
+  firebaseVerifier: FirebaseVerifier,
+  logger: Logger,
+): Promise<boolean> {
+  try {
+    const claims = await firebaseVerifier.verify(token);
+    logger.setSource(claims.email ?? claims.uid ?? "firebase-user");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Extracts the bearer credential from an `Authorization` header value, if present. */
@@ -212,7 +229,8 @@ export async function validateCredential(
   if (opts.firebaseVerifier) {
     try {
       const claims = await opts.firebaseVerifier.verify(credential);
-      return { source: claims.email ?? claims.uid, roles: claims.roles };
+      // Fall back to a fixed label so attribution is never blank if a token lacks email and uid.
+      return { source: claims.email ?? claims.uid ?? "firebase-user", roles: claims.roles };
     } catch {
       // neither validated
     }
@@ -242,6 +260,9 @@ export function isTrustedOrigin(
   const stamped = c.req.header(INTERNAL_REQUEST_HEADER);
   if (stamped !== undefined && safeEqual(stamped, internalKey)) return true;
 
+  // ⚠️ FOOTGUN: with trustLocalhost (default true) ANY loopback peer is trusted with no token.
+  // Behind a SAME-HOST reverse proxy every forwarded request arrives over loopback and is thus
+  // auth-exempt. Expose the app directly, or set TRUST_LOCALHOST=false when fronted by a local proxy.
   return trustLocalhost && isLoopbackRequest(c);
 }
 

@@ -1,11 +1,11 @@
 import { signToken } from "@mrg-keystone/keep";
 
 /**
- * One-command smoketest for the Danet ↔ Fresh integration. Boots the real Fresh dev server
+ * One-command smoketest for the Keep ↔ Fresh integration. Boots the real Fresh dev server
  * (Vite), runs the matrix against it, tears it down. Run: `deno task smoke`.
  *
- * Danet is consumed via the ./vendor/danet symlink (-> ../../src), so this tests your LOCAL
- * Danet through the actual Vite SSR pipeline.
+ * Keep is consumed via Deno `links` (deno.json `"links": ["../.."]`) — NOT a vendor symlink — so
+ * this tests your LOCAL Keep through the actual Vite SSR pipeline.
  */
 const KEY = "dev-secret";
 const PORT = 8173;

@@ -332,6 +332,21 @@ Deno.test("middleware: an invalid ?token is rejected with 401", async () => {
   assertEquals(res.status, 401);
 });
 
+Deno.test("middleware: the Authorization header wins over ?token when both are present", async () => {
+  // mod.ts resolves `header(...) ?? query(...)`, so a valid header beats a garbage ?token.
+  const { fromNetwork, sources } = appWith();
+  const good = await signToken({ source: "hdr", appName: "test", expiry: future }, KEY);
+  const res = await fromNetwork(new Request("http://app/protected?token=garbage", bearer(good)));
+  assertEquals(res.status, 200);
+  assertEquals(sources[0], "hdr");
+});
+
+Deno.test("middleware: a loopback peer short-circuits before verifying the Authorization token", async () => {
+  // Trusted-origin is checked first, so even a garbage Bearer token never reaches verification.
+  const res = await appWith().fromLocalhost(req(bearer("garbage")));
+  assertEquals(res.status, 200);
+});
+
 Deno.test("guard: a network request accepts a valid token from the ?token query param", async () => {
   const token = await signToken({ source: "link", appName: "test", expiry: future }, KEY);
   const { g } = guard();
