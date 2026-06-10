@@ -1,0 +1,72 @@
+[MOD] pie
+
+[ENT] http.gatherFruit(OrchardDto): FruitDto
+[ENT] http.makeFilling(MakeFillingDto): FillingDto
+[ENT] http.rollDough(RollDoughDto): CrustDto
+[ENT] http.assemblePie(AssembleDto): RawPieDto
+[ENT] http.bakePie(BakeDto): BakedPieDto
+[ENT] http.slicePie(SliceDto): SlicesDto
+
+[REQ] fruit.gather(OrchardDto): FruitDto
+    [NEW] fruit
+    fruit.toDto(): FruitDto
+
+[REQ] filling.make(MakeFillingDto): FillingDto
+    [NEW] filling
+    filling.toDto(): FillingDto
+
+[REQ] crust.roll(RollDoughDto): CrustDto
+    [NEW] crust
+    crust.toDto(): CrustDto
+
+[REQ] rawPie.assemble(AssembleDto): RawPieDto
+    [NEW] rawPie
+    rawPie.toDto(): RawPieDto
+
+[REQ] bakedPie.bake(BakeDto): BakedPieDto
+    [NEW] bakedPie
+    bakedPie.toDto(): BakedPieDto
+
+[REQ] slices.slice(SliceDto): SlicesDto
+    [NEW] slices
+    slices.toDto(): SlicesDto
+
+[DTO] OrchardDto: orchard
+    which orchard to pick fruit from
+[DTO] FruitDto: fruitId
+    the picked fruit
+[DTO] MakeFillingDto: fruitId
+    the fruit to turn into filling
+[DTO] FillingDto: fillingId
+    the prepared filling
+[DTO] RollDoughDto: fillingId
+    the filling the crust is rolled for
+[DTO] CrustDto: crustId
+    the rolled crust
+[DTO] AssembleDto: crustId
+    the crust to assemble the pie on
+[DTO] RawPieDto: rawPieId
+    the assembled, unbaked pie
+[DTO] BakeDto: rawPieId
+    the raw pie to bake
+[DTO] BakedPieDto: bakedPieId
+    the baked pie
+[DTO] SliceDto: bakedPieId
+    the baked pie to slice
+[DTO] SlicesDto: sliceCount
+    how many slices the pie yielded
+
+[TYP] orchard: string
+    an orchard to pick from
+[TYP] fruitId: string
+    a picked-fruit identifier
+[TYP] fillingId: string
+    a prepared-filling identifier
+[TYP] crustId: string
+    a rolled-crust identifier
+[TYP] rawPieId: string
+    an assembled-raw-pie identifier
+[TYP] bakedPieId: string
+    a baked-pie identifier
+[TYP] sliceCount: number
+    a count of pie slices

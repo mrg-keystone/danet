@@ -2,3 +2,4 @@
 .playwright-mcp/
 node_modules/
 e2e/cake/deno.lock
+e2e/pie/deno.lock
