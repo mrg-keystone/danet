@@ -43,28 +43,18 @@ Deno.test("cake e2e — exerciseEndpoints chains all 6 green in-process", async 
   }
 });
 
-// What each step's request body should be auto-filled with once the prior step has run —
-// i.e. the value captured from the previous endpoint's response and threaded in via `bind`.
-// (Step 1 takes a seed `destination`, so it has nothing to autofill.)
-const EXPECTED_AUTOFILL = [
-  null,
-  "store-42", // groceryShop.storeId   <- driveToStore.storeId
-  "cart-store-42", // checkout.cartId        <- groceryShop.cartId
-  "ing-cart-store-42", // mixIngredients.ingred. <- checkout.ingredientsId
-  "batter-ing-cart-store-42", // bake.batterId          <- mixIngredients.batterId
-  "cake-batter-ing-cart-store-42", // cut.cakeId             <- bake.cakeId
-];
-
-// Stage 4 — the interactive emulator, driven step by step in headless chromium. Emulates EVERY
-// step in order, asserting per step: it's unlocked, the next step is still locked, its body was
-// auto-filled from the prior capture, and a checkmark appears after it runs. Opt-in (needs
+// Stage 4 — the interactive emulator, driven in headless chromium. Each cake step is emulated
+// explicitly, in order, as its own named t.step so the run output reads like the process itself:
+// drive to store -> grocery shop -> checkout -> mix ingredients -> bake -> cut. Every step asserts
+// it's unlocked, the next step is still locked, its request body was auto-filled with the value
+// captured from the previous step, and a checkmark appears after it runs. Opt-in (needs
 // `deno run -A npm:playwright install chromium chromium-headless-shell`; `deno task cake` provisions).
 Deno.test({
   name: "cake e2e — emulator drives all 6 steps: progressive unlock + autofill + checkmarks",
   ignore: Deno.env.get("KEEP_BROWSER") !== "1",
   sanitizeResources: false,
   sanitizeOps: false,
-  fn: async () => {
+  fn: async (t) => {
     const p = port++;
     const api = await bootstrapServer("cake", httpModule, { port: p });
     await api.listen();
@@ -76,37 +66,87 @@ Deno.test({
     try {
       const page = await browser.newPage();
       await page.goto(`http://localhost:${p}/docs/cake`);
-      const emulate = page.locator("button.emulate");
-      const row = (i: number) => page.locator("li").nth(i);
 
-      // Walk every step in order, emulating and verifying each one individually.
-      for (let i = 0; i < CHAIN.length; i++) {
-        // This step is unlocked; the next one is still locked until this one succeeds.
-        assertEquals(await emulate.nth(i).isDisabled(), false, `step ${i + 1} (${CHAIN[i]}) should be unlocked`);
-        if (i + 1 < CHAIN.length) {
-          assertEquals(await emulate.nth(i + 1).isDisabled(), true, `step ${i + 2} should still be locked before step ${i + 1} runs`);
-        }
-        // Its request body was pre-filled with the value captured from the previous step.
-        const expected = EXPECTED_AUTOFILL[i];
-        if (expected) {
-          const body = await row(i).locator("textarea").inputValue();
-          assert(body.includes(expected), `step ${i + 1} (${CHAIN[i]}) not autofilled with "${expected}": ${body}`);
-        }
-        // Emulate it, then wait for its checkmark.
+      const emulate = page.locator("button.emulate"); // the six "Emulate process" buttons, in order
+      const rows = page.locator("li"); // the six endpoint rows, in order
+      const unlocked = async (i: number) => !(await emulate.nth(i).isDisabled());
+      const bodyOf = (i: number) => rows.nth(i).locator("textarea").inputValue();
+      const runStep = async (i: number) => {
         await emulate.nth(i).click();
-        await row(i).locator(".dot.ok").waitFor({ timeout: 10000 });
-      }
+        await rows.nth(i).locator(".dot.ok").waitFor({ timeout: 10000 }); // wait for its checkmark
+      };
 
-      // All six green.
-      assertEquals(await page.locator("li .dot.ok").count(), 6);
+      // ── Step 1 — drive to store ──────────────────────────────────────────────
+      // The first step needs no upstream data (it seeds `destination`), so it starts unlocked.
+      await t.step("step 1 — drive to store", async () => {
+        assertEquals(await unlocked(0), true, "step 1 (drive to store) should start unlocked");
+        assertEquals(await unlocked(1), false, "step 2 (grocery shop) should be locked until step 1 runs");
+        await runStep(0); // -> returns { storeId: "store-42" }
+      });
 
-      // The "Run all in order" button replays the whole chain from a fresh load.
-      await page.reload();
-      await page.locator("#runall").click();
-      await page.waitForFunction(
-        "document.querySelectorAll('li .dot.ok').length === 6",
-        { timeout: 10000 },
-      );
+      // ── Step 2 — grocery shop ────────────────────────────────────────────────
+      // Unlocks once step 1 succeeds; its body is auto-filled with step 1's storeId.
+      await t.step("step 2 — grocery shop (storeId autofilled from step 1)", async () => {
+        assertEquals(await unlocked(1), true, "step 2 (grocery shop) should unlock after step 1");
+        assertEquals(await unlocked(2), false, "step 3 (checkout) should be locked until step 2 runs");
+        const body = await bodyOf(1);
+        assert(body.includes("store-42"), `step 2 not autofilled with storeId "store-42": ${body}`);
+        await runStep(1); // -> returns { cartId: "cart-store-42" }
+      });
+
+      // ── Step 3 — checkout ────────────────────────────────────────────────────
+      // Unlocks once step 2 succeeds; its body is auto-filled with step 2's cartId.
+      await t.step("step 3 — checkout (cartId autofilled from step 2)", async () => {
+        assertEquals(await unlocked(2), true, "step 3 (checkout) should unlock after step 2");
+        assertEquals(await unlocked(3), false, "step 4 (mix ingredients) should be locked until step 3 runs");
+        const body = await bodyOf(2);
+        assert(body.includes("cart-store-42"), `step 3 not autofilled with cartId "cart-store-42": ${body}`);
+        await runStep(2); // -> returns { ingredientsId: "ing-cart-store-42" }
+      });
+
+      // ── Step 4 — mix ingredients ─────────────────────────────────────────────
+      // Unlocks once step 3 succeeds; its body is auto-filled with step 3's ingredientsId.
+      await t.step("step 4 — mix ingredients (ingredientsId autofilled from step 3)", async () => {
+        assertEquals(await unlocked(3), true, "step 4 (mix ingredients) should unlock after step 3");
+        assertEquals(await unlocked(4), false, "step 5 (bake) should be locked until step 4 runs");
+        const body = await bodyOf(3);
+        assert(body.includes("ing-cart-store-42"), `step 4 not autofilled with ingredientsId "ing-cart-store-42": ${body}`);
+        await runStep(3); // -> returns { batterId: "batter-ing-cart-store-42" }
+      });
+
+      // ── Step 5 — bake ────────────────────────────────────────────────────────
+      // Unlocks once step 4 succeeds; its body is auto-filled with step 4's batterId.
+      await t.step("step 5 — bake (batterId autofilled from step 4)", async () => {
+        assertEquals(await unlocked(4), true, "step 5 (bake) should unlock after step 4");
+        assertEquals(await unlocked(5), false, "step 6 (cut) should be locked until step 5 runs");
+        const body = await bodyOf(4);
+        assert(body.includes("batter-ing-cart-store-42"), `step 5 not autofilled with batterId "batter-ing-cart-store-42": ${body}`);
+        await runStep(4); // -> returns { cakeId: "cake-batter-ing-cart-store-42" }
+      });
+
+      // ── Step 6 — cut ─────────────────────────────────────────────────────────
+      // The final step; unlocks once step 5 succeeds; its body is auto-filled with step 5's cakeId.
+      await t.step("step 6 — cut (cakeId autofilled from step 5)", async () => {
+        assertEquals(await unlocked(5), true, "step 6 (cut) should unlock after step 5");
+        const body = await bodyOf(5);
+        assert(body.includes("cake-batter-ing-cart-store-42"), `step 6 not autofilled with cakeId "cake-batter-ing-cart-store-42": ${body}`);
+        await runStep(5); // -> returns { sliceCount: 8 }
+      });
+
+      // ── All six steps green ──────────────────────────────────────────────────
+      await t.step("all six steps show a checkmark", async () => {
+        assertEquals(await page.locator("li .dot.ok").count(), 6);
+      });
+
+      // ── "Run all in order" replays the whole chain from a fresh load ──────────
+      await t.step("run all in order greens the whole chain", async () => {
+        await page.reload();
+        await page.locator("#runall").click();
+        await page.waitForFunction(
+          "document.querySelectorAll('li .dot.ok').length === 6",
+          { timeout: 10000 },
+        );
+      });
 
       // Hold the all-green state on screen briefly when watching headed.
       if (headed) await new Promise((r) => setTimeout(r, 2500));
