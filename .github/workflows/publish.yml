@@ -1,6 +1,14 @@
 name: Publish to JSR
 
-# Publishes to JSR on every push to main. To cut a release, bump "version" in deno.json and push.
+# Publishes to JSR on every push to main, auto-bumping the version when needed:
+#   - If the version in deno.json is NOT yet on JSR, it is published exactly as-is
+#     (manual bumps still work — set the version yourself to cut a specific release).
+#   - If it IS already on JSR (code merged without a bump), the workflow derives the
+#     next version from the latest published one — patch by default, minor when the
+#     push contains a `feat:` commit, major on a breaking marker (`!:` or
+#     "BREAKING CHANGE") — publishes it, and commits the bump back to main so the
+#     repo never drifts from JSR. (Pushes made with GITHUB_TOKEN don't re-trigger
+#     workflows, so this cannot loop.)
 #
 # WORKAROUND for a `deno publish` hang on this package:
 #   The publish itself SUCCEEDS — the version uploads and JSR's server-side publishing task
@@ -13,14 +21,22 @@ name: Publish to JSR
 #
 #   So we don't wait on the process: run `deno publish` in the background and poll the JSR API for
 #   the target version. As soon as it's live we kill the stuck process and exit 0; if it never
-#   appears we exit 1. This also covers the idempotent case (version already on JSR → exit 0 fast).
+#   appears we exit 1.
 #
-# Publish flags: --allow-dirty (tree may be dirty), --no-provenance (provenance also stalls on
-# runners and isn't needed with token auth), --allow-slow-types (don't block publish on slow types).
+# Publish flags: --allow-dirty (the auto-bump edits deno.json in the work tree), --no-provenance
+# (provenance also stalls on runners and isn't needed with token auth), --allow-slow-types
+# (don't block publish on slow types).
 on:
   push:
     branches:
       - main
+
+concurrency:
+  group: publish-jsr
+  cancel-in-progress: false
+
+permissions:
+  contents: write
 
 jobs:
   publish:
@@ -29,13 +45,48 @@ jobs:
       JSR_TOKEN: ${{ secrets.JSR_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      - name: Determine version (auto-bump when deno.json's is already on JSR)
+        id: ver
+        run: |
+          set -euo pipefail
+          VER="$(jq -r .version deno.json)"
+          if ! curl -fsS "https://api.jsr.io/scopes/mrg-keystone/packages/keep/versions/$VER" >/dev/null 2>&1; then
+            echo "deno.json version $VER is not on JSR yet — publishing as-is"
+            echo "version=$VER" >> "$GITHUB_OUTPUT"
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          LATEST="$(curl -fsS https://jsr.io/@mrg-keystone/keep/meta.json | jq -r .latest)"
+          BUMP=patch
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.event.after }}"
+          if git rev-parse -q --verify "$BEFORE^{commit}" >/dev/null 2>&1; then
+            LOG="$(git log --format=%B "$BEFORE..$AFTER")"
+            if echo "$LOG" | grep -qE '^[a-z]+(\([^)]*\))?!:|BREAKING CHANGE'; then
+              BUMP=major
+            elif echo "$LOG" | grep -qE '^feat(\([^)]*\))?:'; then
+              BUMP=minor
+            fi
+          fi
+          IFS=. read -r MA MI PA <<< "$LATEST"
+          case "$BUMP" in
+            major) NEW="$((MA + 1)).0.0" ;;
+            minor) NEW="$MA.$((MI + 1)).0" ;;
+            patch) NEW="$MA.$MI.$((PA + 1))" ;;
+          esac
+          echo "$VER is already on JSR (latest: $LATEST) — auto-bumping $BUMP to $NEW"
+          jq --arg v "$NEW" '.version = $v' deno.json > deno.json.tmp && mv deno.json.tmp deno.json
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+          echo "bumped=true" >> "$GITHUB_OUTPUT"
       - name: Publish to JSR (poll API — deno publish does not exit after success)
         run: |
           set -uo pipefail
-          VER="$(jq -r .version deno.json)"
+          VER="${{ steps.ver.outputs.version }}"
           VURL="https://api.jsr.io/scopes/mrg-keystone/packages/keep/versions/$VER"
           echo "Publishing @mrg-keystone/keep@$VER ..."
           deno publish --token "$JSR_TOKEN" --allow-dirty --no-provenance --allow-slow-types &
@@ -57,3 +108,11 @@ jobs:
           echo "✗ timed out waiting for @mrg-keystone/keep@$VER to appear on JSR" >&2
           kill "$PUB_PID" 2>/dev/null || true
           exit 1
+      - name: Commit the auto-bump back to main
+        if: steps.ver.outputs.bumped == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deno.json
+          git commit -m "release: v${{ steps.ver.outputs.version }} (auto-bump)"
+          git push || echo "::warning::could not push the version bump back to main; the next run will re-derive from the JSR latest"
