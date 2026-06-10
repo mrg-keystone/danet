@@ -25,7 +25,10 @@ export class SwaggerBuilder {
     );
     const docs$ = specs.map((s) => this.documentBuilder.createDocument(s));
     const swaggerDocs = await Promise.all(docs$);
-    const docsIndexHtml = this.indexPageBuilder.build(server.moduleNames);
+    // Index from the CRAWLED modules, not server.moduleNames — the server only
+    // registers the root module, so an imported module would get a /docs/<name>
+    // page but no card on the index.
+    const docsIndexHtml = this.indexPageBuilder.build(allModules.map((m) => m.name));
     return { swaggerDocs, docsIndexHtml };
   }
 }
