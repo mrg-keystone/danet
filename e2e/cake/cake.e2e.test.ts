@@ -83,8 +83,9 @@ Deno.test("cake e2e — emulator page, Swagger UI, and raw spec are all served",
 // Stage 4 — the interactive emulator, driven in headless chromium. Each cake step is emulated
 // explicitly, in order, as its own named t.step so the run output reads like the process itself:
 // drive to store -> grocery shop -> checkout -> mix ingredients -> bake -> cut. Every step asserts
-// it's unlocked, the next step is still locked, its request body was auto-filled with the value
-// captured from the previous step, and a checkmark appears after it runs. Opt-in (needs
+// it's unlocked, the next step is still locked, its resolved request carries the value captured
+// from the previous step (bodies hold {{step.field}} references), and a checkmark appears after
+// it runs. Opt-in (needs
 // `deno run -A npm:playwright install chromium chromium-headless-shell`; `deno task cake` provisions).
 Deno.test({
   name: "cake e2e — emulator drives all 6 steps: progressive unlock + autofill + checkmarks",
@@ -104,10 +105,15 @@ Deno.test({
       const page = await browser.newPage();
       await page.goto(`http://localhost:${p}/docs/cake`);
 
-      const emulate = page.locator("button.emulate"); // the six "Emulate process" buttons, in order
+      const emulate = page.locator("button.emulate"); // the six per-step "Run" buttons, in order
       const rows = page.locator("li"); // the six endpoint rows, in order
       const unlocked = async (i: number) => !(await emulate.nth(i).isDisabled());
       const bodyOf = (i: number) => rows.nth(i).locator("textarea").inputValue();
+      // The "will send" preview: the body with its {{step.field}} references resolved against
+      // captured responses — this carries the concrete chained values (the editor text never
+      // changes, so hand edits can't be clobbered).
+      const resolvedOf = async (i: number) =>
+        (await rows.nth(i).locator(".resolved").textContent()) ?? "";
       const runStep = async (i: number) => {
         await emulate.nth(i).click();
         await rows.nth(i).locator(".dot.ok").waitFor({ timeout: 10000 }); // wait for its checkmark
@@ -131,51 +137,54 @@ Deno.test({
       });
 
       // ── Step 2 — grocery shop ────────────────────────────────────────────────
-      // Unlocks once step 1 succeeds; its body is auto-filled with step 1's storeId.
-      await t.step("step 2 — grocery shop (storeId autofilled from step 1)", async () => {
+      // Unlocks once step 1 succeeds; its body references step 1's storeId, and the resolved
+      // request carries the captured value.
+      await t.step("step 2 — grocery shop (storeId resolved from step 1)", async () => {
         assertEquals(await unlocked(1), true, "step 2 (grocery shop) should unlock after step 1");
         assertEquals(await unlocked(2), false, "step 3 (checkout) should be locked until step 2 runs");
         const body = await bodyOf(1);
-        assert(body.includes("store-42"), `step 2 not autofilled with storeId "store-42": ${body}`);
+        assert(body.includes("{{driveToStore.storeId}}"), `step 2 body should reference driveToStore.storeId: ${body}`);
+        const resolved = await resolvedOf(1);
+        assert(resolved.includes("store-42"), `step 2 resolved request missing storeId "store-42": ${resolved}`);
         await runStep(1); // -> returns { cartId: "cart-store-42" }
       });
 
       // ── Step 3 — checkout ────────────────────────────────────────────────────
-      // Unlocks once step 2 succeeds; its body is auto-filled with step 2's cartId.
-      await t.step("step 3 — checkout (cartId autofilled from step 2)", async () => {
+      // Unlocks once step 2 succeeds; resolves step 2's cartId into its request.
+      await t.step("step 3 — checkout (cartId resolved from step 2)", async () => {
         assertEquals(await unlocked(2), true, "step 3 (checkout) should unlock after step 2");
         assertEquals(await unlocked(3), false, "step 4 (mix ingredients) should be locked until step 3 runs");
-        const body = await bodyOf(2);
-        assert(body.includes("cart-store-42"), `step 3 not autofilled with cartId "cart-store-42": ${body}`);
+        const resolved = await resolvedOf(2);
+        assert(resolved.includes("cart-store-42"), `step 3 resolved request missing cartId "cart-store-42": ${resolved}`);
         await runStep(2); // -> returns { ingredientsId: "ing-cart-store-42" }
       });
 
       // ── Step 4 — mix ingredients ─────────────────────────────────────────────
-      // Unlocks once step 3 succeeds; its body is auto-filled with step 3's ingredientsId.
-      await t.step("step 4 — mix ingredients (ingredientsId autofilled from step 3)", async () => {
+      // Unlocks once step 3 succeeds; resolves step 3's ingredientsId into its request.
+      await t.step("step 4 — mix ingredients (ingredientsId resolved from step 3)", async () => {
         assertEquals(await unlocked(3), true, "step 4 (mix ingredients) should unlock after step 3");
         assertEquals(await unlocked(4), false, "step 5 (bake) should be locked until step 4 runs");
-        const body = await bodyOf(3);
-        assert(body.includes("ing-cart-store-42"), `step 4 not autofilled with ingredientsId "ing-cart-store-42": ${body}`);
+        const resolved = await resolvedOf(3);
+        assert(resolved.includes("ing-cart-store-42"), `step 4 resolved request missing ingredientsId "ing-cart-store-42": ${resolved}`);
         await runStep(3); // -> returns { batterId: "batter-ing-cart-store-42" }
       });
 
       // ── Step 5 — bake ────────────────────────────────────────────────────────
-      // Unlocks once step 4 succeeds; its body is auto-filled with step 4's batterId.
-      await t.step("step 5 — bake (batterId autofilled from step 4)", async () => {
+      // Unlocks once step 4 succeeds; resolves step 4's batterId into its request.
+      await t.step("step 5 — bake (batterId resolved from step 4)", async () => {
         assertEquals(await unlocked(4), true, "step 5 (bake) should unlock after step 4");
         assertEquals(await unlocked(5), false, "step 6 (cut) should be locked until step 5 runs");
-        const body = await bodyOf(4);
-        assert(body.includes("batter-ing-cart-store-42"), `step 5 not autofilled with batterId "batter-ing-cart-store-42": ${body}`);
+        const resolved = await resolvedOf(4);
+        assert(resolved.includes("batter-ing-cart-store-42"), `step 5 resolved request missing batterId "batter-ing-cart-store-42": ${resolved}`);
         await runStep(4); // -> returns { cakeId: "cake-batter-ing-cart-store-42" }
       });
 
       // ── Step 6 — cut ─────────────────────────────────────────────────────────
-      // The final step; unlocks once step 5 succeeds; its body is auto-filled with step 5's cakeId.
-      await t.step("step 6 — cut (cakeId autofilled from step 5)", async () => {
+      // The final step; unlocks once step 5 succeeds; resolves step 5's cakeId into its request.
+      await t.step("step 6 — cut (cakeId resolved from step 5)", async () => {
         assertEquals(await unlocked(5), true, "step 6 (cut) should unlock after step 5");
-        const body = await bodyOf(5);
-        assert(body.includes("cake-batter-ing-cart-store-42"), `step 6 not autofilled with cakeId "cake-batter-ing-cart-store-42": ${body}`);
+        const resolved = await resolvedOf(5);
+        assert(resolved.includes("cake-batter-ing-cart-store-42"), `step 6 resolved request missing cakeId "cake-batter-ing-cart-store-42": ${resolved}`);
         await runStep(5); // -> returns { sliceCount: 8 }
       });
 

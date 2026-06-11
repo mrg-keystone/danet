@@ -56,6 +56,11 @@ export interface ExerciseOptions {
   rateLimit?: RateLimitOptions;
   maxIterations?: number;
   overrides?: SeedOverrides;
+  /**
+   * Exercise one named branch: endpoints tagged with other flows are excluded; untagged
+   * endpoints (part of every flow) stay. Unset ⇒ every endpoint.
+   */
+  flow?: string;
 }
 
 export interface EndpointResult {
@@ -63,6 +68,7 @@ export interface EndpointResult {
   method: string;
   path: string;
   ok: boolean;
+  optional: boolean;
   status?: number;
   attempts: number;
   error?: string;
@@ -70,7 +76,10 @@ export interface EndpointResult {
 
 export interface ExerciseReport {
   passed: EndpointResult[];
+  /** Required endpoints that didn't go green — empty means the process works. */
   failed: EndpointResult[];
+  /** `optional: true` endpoints that didn't pass — reported, but not a failure. */
+  optionalFailed: EndpointResult[];
   iterations: number;
   order: string[];
   cycles: string[][];
@@ -101,9 +110,37 @@ function buildValues(
     }
   }
   for (const [field, ref] of Object.entries(ep.bind)) {
-    const [depId, outField] = ref.split(".");
-    const src = store.get(depId);
-    if (src && outField in src) values[field] = src[outField];
+    // An array declares alternatives (the join after a branch) — first resolvable wins.
+    const candidates = Array.isArray(ref) ? ref : [ref];
+    for (const candidate of candidates) {
+      if (candidate.startsWith("$")) {
+        // External input: `"$name"` declares a value produced outside this module (another
+        // service, a human). The runner's variable scope is `overrides.seeds` — it always
+        // wins. When no seed exists, composition fulfills the contract: the first captured
+        // response (insertion = run order) owning a same-named field provides the value.
+        const name = candidate.slice(1);
+        if (overrides.seeds && name in overrides.seeds) {
+          values[field] = overrides.seeds[name];
+          break;
+        }
+        let captured = false;
+        for (const src of store.values()) {
+          if (name in src) {
+            values[field] = src[name];
+            captured = true;
+            break;
+          }
+        }
+        if (captured) break;
+        continue;
+      }
+      const [depId, outField] = candidate.split(".");
+      const src = store.get(depId);
+      if (src && outField in src) {
+        values[field] = src[outField];
+        break;
+      }
+    }
   }
   Object.assign(values, overrides.byEndpoint?.[ep.id] ?? {});
   return values;
@@ -210,7 +247,38 @@ export async function exerciseEndpoints(
   const limiter = createLimiter(opts.rateLimit);
 
   // Flatten endpoints across all module docs; ids/paths are app-root-relative and globally usable.
-  const endpoints = opts.api.docs.flatMap((d) => endpointsFromDoc(d.doc));
+  let endpoints = opts.api.docs.flatMap((d) => endpointsFromDoc(d.doc));
+  if (opts.flow) {
+    const flow = opts.flow;
+    endpoints = endpoints.filter((ep) =>
+      ep.flows.length === 0 || ep.flows.includes(flow)
+    );
+  }
+  // Synthetic contract edges: a "$name" bind whose name some endpoint in the composed app
+  // produces (same-named output field) must run AFTER that producer, so its capture exists
+  // when the consumer's request is built — the fallback then hits in pass one. The endpoint
+  // objects are fresh per call (endpointsFromDoc builds them above), but their `dependsOn`
+  // ARRAYS alias the doc's `x-keep-process` metadata (which in turn is the decorator's) — so
+  // never push into them; replace the property with a copy. Mutating would poison every later
+  // bootstrap in the same process with a cross-module edge its emulator page can never satisfy.
+  const producerByField = new Map<string, string>();
+  for (const ep of endpoints) {
+    for (const field of ep.outputFields) {
+      if (!producerByField.has(field)) producerByField.set(field, ep.id);
+    }
+  }
+  for (const ep of endpoints) {
+    for (const ref of Object.values(ep.bind)) {
+      for (const candidate of Array.isArray(ref) ? ref : [ref]) {
+        if (!candidate.startsWith("$")) continue;
+        const producer = producerByField.get(candidate.slice(1));
+        if (!producer || producer === ep.id) continue;
+        if (!ep.dependsOn.includes(producer)) {
+          ep.dependsOn = [...ep.dependsOn, producer];
+        }
+      }
+    }
+  }
   const byId = new Map(endpoints.map((e) => [e.id, e]));
   const { order, cycles } = processOrder(endpoints);
 
@@ -223,6 +291,7 @@ export async function exerciseEndpoints(
       method: ep.method,
       path: ep.path,
       ok: false,
+      optional: ep.optional,
       attempts: 0,
     });
   }
@@ -270,7 +339,8 @@ export async function exerciseEndpoints(
   const all = [...results.values()];
   return {
     passed: all.filter((r) => r.ok),
-    failed: all.filter((r) => !r.ok),
+    failed: all.filter((r) => !r.ok && !r.optional),
+    optionalFailed: all.filter((r) => !r.ok && r.optional),
     iterations,
     order,
     cycles,

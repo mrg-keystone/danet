@@ -23,7 +23,14 @@ export type FetchHandler = (
 export interface ProcessExtension {
   order?: number;
   dependsOn: string[];
-  bind: Record<string, string>;
+  /** `"endpointId.field"`, `"$externalInput"`, or an array of alternatives (first wins). */
+  bind: Record<string, string | string[]>;
+  /** Named branches this endpoint belongs to; empty/absent = part of every flow. */
+  flows?: string[];
+  /** Attempted but not required: failure doesn't stop run-all or fail the report. */
+  optional?: boolean;
+  /** A generated stand-in endpoint minting placeholder values — not part of the real process. */
+  stub?: boolean;
   method: string;
   path: string;
 }

@@ -9,6 +9,8 @@ export interface SwaggerIndexData {
     size: string;
     opacity: string;
   }>;
+  /** When set, a "system map" link to the whole-app process graph renders below the cards. */
+  mapHref?: string;
 }
 
 function escapeHtml(value: string): string {
@@ -62,6 +64,14 @@ export function renderSwaggerIndex(data: SwaggerIndexData): string {
       )
       .join("\n              ")
     : `<p class="no-docs">No documentation available yet</p>`;
+
+  const mapLink = data.mapHref
+    ? `<div class="map-link-wrap">
+            <a href="${
+      escapeHtml(data.mapHref)
+    }" class="map-link">System map — every module's process in one graph →</a>
+          </div>`
+    : "";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -326,6 +336,30 @@ export function renderSwaggerIndex(data: SwaggerIndexData): string {
         transform: translateX(0);
       }
 
+      .map-link-wrap {
+        text-align: center;
+        margin-top: 2rem;
+      }
+
+      .map-link {
+        display: inline-block;
+        color: #7ed56f;
+        text-decoration: none;
+        font-size: 0.95rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        padding: 0.6rem 1.25rem;
+        border: 1px dashed rgba(73, 165, 61, 0.4);
+        border-radius: 10px;
+        transition: all 0.3s;
+      }
+
+      .map-link:hover {
+        border-color: #49a53d;
+        background: rgba(73, 165, 61, 0.12);
+        color: #ffffff;
+      }
+
       .no-docs {
         text-align: center;
         color: rgba(255, 255, 255, 0.5);
@@ -426,6 +460,7 @@ export function renderSwaggerIndex(data: SwaggerIndexData): string {
         <div class="docs-list">
           ${docsList}
         </div>
+        ${mapLink}
       </div>
 
       <div class="footer">

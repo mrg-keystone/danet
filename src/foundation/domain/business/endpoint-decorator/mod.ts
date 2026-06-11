@@ -49,8 +49,34 @@ export interface EndpointOptions {
   /**
    * Output→input wiring: `{ thisInputField: "otherEndpointId.outputField" }`. The emulator and
    * runner pre-fill this endpoint's request body from captured responses of the named endpoints.
+   * A `"$name"` value instead declares an **external input** — something no endpoint in this
+   * module produces (an id minted by another module, a tenant key). The emulator resolves it
+   * from its shared variable scope (set once, visible on every docs page) and lists it under
+   * "module inputs"; the headless runner resolves it from `overrides.seeds[name]`.
+   * An **array** value declares alternatives — first resolvable wins (the join after a branch:
+   * `{ paymentId: ["payCard.paymentId", "payCash.paymentId"] }`).
    */
-  bind?: Record<string, string>;
+  bind?: Record<string, string | string[]>;
+  /**
+   * Named flow(s) this endpoint belongs to — a branch through the module's process (e.g.
+   * "card-payment"). Untagged endpoints are part of every flow. The emulator shows a flow
+   * selector and walks only the active flow; within a flow, dependencies on endpoints outside
+   * it don't gate (so an after-the-branch step can depend on every alternative and unlock when
+   * the chosen one passes).
+   */
+  flows?: string | string[];
+  /**
+   * A step run-all and the headless runner attempt but don't require: its failure doesn't stop
+   * the walk or fail the report. For steps that need state the chain can't produce, or side
+   * quests of the main process.
+   */
+  optional?: boolean;
+  /**
+   * Marks this as a generated stand-in endpoint minting placeholder values — not part of the
+   * real process. The emulator badges it and the contract-wiring bookkeeping treats it as a
+   * producer like any other.
+   */
+  stub?: boolean;
   /** Human description → OpenAPI operation description. */
   description?: string;
 }
@@ -59,7 +85,10 @@ export interface EndpointOptions {
 export interface ProcessMetadata {
   order?: number;
   dependsOn: string[];
-  bind: Record<string, string>;
+  bind: Record<string, string | string[]>;
+  flows: string[];
+  optional: boolean;
+  stub: boolean;
   method: EndpointMethod;
   path: string;
 }
@@ -105,15 +134,15 @@ export function Endpoint(opts: EndpointOptions = {}): MethodDecorator {
     }
 
     // 5) process metadata for the emulator + headless runner.
-    const dependsOn = opts.dependsOn == null
-      ? []
-      : Array.isArray(opts.dependsOn)
-      ? opts.dependsOn
-      : [opts.dependsOn];
+    const toList = (v?: string | string[]) =>
+      v == null ? [] : Array.isArray(v) ? v : [v];
     const meta: ProcessMetadata = {
       order: opts.order,
-      dependsOn,
+      dependsOn: toList(opts.dependsOn),
       bind: opts.bind ?? {},
+      flows: toList(opts.flows),
+      optional: opts.optional ?? false,
+      stub: opts.stub ?? false,
       method,
       path,
     };

@@ -100,7 +100,11 @@ export type {
   ProcessMetadata,
 } from "@foundation/domain/business/endpoint-decorator/mod.ts";
 export { endpointsFromDoc } from "@foundation/domain/business/endpoint-spec/mod.ts";
-export type { SpecEndpoint } from "@foundation/domain/business/endpoint-spec/mod.ts";
+export type {
+  SpecEndpoint,
+  SpecField,
+  SpecParam,
+} from "@foundation/domain/business/endpoint-spec/mod.ts";
 export { processOrder } from "@foundation/domain/business/process-graph/mod.ts";
 export type {
   ProcessGraph,
@@ -115,6 +119,16 @@ export {
   emulatorShellHtml,
   orderedEndpoints,
 } from "@foundation/domain/business/emulator-ui/mod.ts";
+export {
+  buildMapModel,
+  mapShellHtml,
+} from "@foundation/domain/business/map-ui/mod.ts";
+export type {
+  MapEdge,
+  MapLane,
+  MapModel,
+  MapNode,
+} from "@foundation/domain/business/map-ui/mod.ts";
 export { exerciseEndpoints } from "@foundation/domain/coordinators/exercise-harness/mod.ts";
 export type {
   EndpointResult,

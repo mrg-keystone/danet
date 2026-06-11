@@ -23,6 +23,8 @@ import {
 // handlebars was replaced with template literals, so eager loading is safe everywhere.
 import { SwaggerBuilder } from "@foundation/domain/business/swagger-builder/mod.ts";
 import { emulatorShellHtml } from "@foundation/domain/business/emulator-ui/mod.ts";
+import { mapShellHtml } from "@foundation/domain/business/map-ui/mod.ts";
+import { endpointsFromDoc } from "@foundation/domain/business/endpoint-spec/mod.ts";
 
 interface BootstrapOptions {
   port?: number;
@@ -43,6 +45,10 @@ function warnOnce(message: string) {
   warned.add(message);
   console.warn(message);
 }
+
+// Dev-mode boot identity (`rune dev`): minted once per process so the emulator pages' reload
+// poller can tell "the same app answered" from "a NEW process is serving" after a restart.
+const bootId = crypto.randomUUID();
 
 /**
  * Builds the logging transports from the environment:
@@ -109,7 +115,9 @@ export class BootstrapServer {
   ) {
     // An array composes into one root module (one entry per rune) — see appModule(). Each
     // child keeps its own Swagger doc; the wrapper itself is skipped by the docs builder.
-    const rootModule = Array.isArray(module) ? appModule(appName, module) : module;
+    const rootModule = Array.isArray(module)
+      ? appModule(appName, module)
+      : module;
     const { port = 3000, swagger = true } = options ?? {};
 
     // Configure the process-wide logger from env before anything can emit.
@@ -167,6 +175,11 @@ export class BootstrapServer {
     adapter.registerRoute("get", "/_mint", mintUi.form as RouteHandler);
     adapter.registerRoute("post", "/_mint", mintUi.mint as RouteHandler);
 
+    // Dev mode (`rune dev` sets KEEP_DEV to a status-file path): serve `/docs/_dev` so the
+    // emulator pages can poll for restarts (bootId change) and spec-check errors, and inject
+    // the reload poller into every emulator page.
+    const devStatusPath = Deno.env.get("KEEP_DEV");
+
     let docs: SwaggerDocEntry[] = [];
     if (swagger) {
       const filters = typeof swagger === "object" ? swagger.filters : [];
@@ -179,15 +192,77 @@ export class BootstrapServer {
           headers: { "content-type": "text/html; charset=utf-8" },
         });
 
-      for (const { path, doc } of docs) {
-        const moduleName = path.replace(/^\//, "");
+      if (devStatusPath) {
+        adapter.registerRoute("get", "/docs/_dev", async () => {
+          // The status file is written by the watcher between polls — a missing file, a
+          // partial write or junk content must never break the channel: degrade to bootId only.
+          let status: Record<string, unknown> = {};
+          try {
+            const parsed = JSON.parse(await Deno.readTextFile(devStatusPath));
+            if (
+              parsed !== null && typeof parsed === "object" &&
+              !Array.isArray(parsed)
+            ) {
+              status = parsed;
+            }
+          } catch {
+            status = {};
+          }
+          return new Response(JSON.stringify({ ...status, bootId }), {
+            headers: { "content-type": "application/json" },
+          });
+        });
+      }
+
+      // Contract auto-wiring index across the composed app: output field name →
+      // "<module>:<endpointId>" of the endpoint producing it (first producer wins; stub
+      // endpoints are producers too). Each emulator page receives the slice covering its own
+      // declared $inputs, so an unset input can auto-resolve from a producer's shared capture.
+      const moduleEntries = docs.map(({ path, doc }) => ({
+        path,
+        doc,
+        moduleName: path.replace(/^\//, ""),
+        endpoints: endpointsFromDoc(doc),
+      }));
+      const producersByField = new Map<string, string>();
+      for (const { moduleName, endpoints } of moduleEntries) {
+        for (const ep of endpoints) {
+          for (const field of ep.outputFields) {
+            if (!producersByField.has(field)) {
+              producersByField.set(field, `${moduleName}:${ep.id}`);
+            }
+          }
+        }
+      }
+
+      for (const { path, doc, moduleName, endpoints } of moduleEntries) {
         const title = `API · ${moduleName}`;
+        // This module's $inputs that a DIFFERENT composed module produces — names with no
+        // producer (or only this module itself) stay explicit-only.
+        const producers: Record<string, string> = {};
+        for (const ep of endpoints) {
+          for (const ref of Object.values(ep.bind)) {
+            for (const candidate of Array.isArray(ref) ? ref : [ref]) {
+              if (!candidate.startsWith("$")) continue;
+              const name = candidate.slice(1);
+              const producer = producersByField.get(name);
+              if (!producer || producer.startsWith(`${moduleName}:`)) continue;
+              producers[name] = producer;
+            }
+          }
+        }
         // Default page: the process emulator (ordered, chainable, click-through). Public shell;
         // the inlined spec renders it, and live endpoint calls carry the stored token.
         adapter.registerRoute(
           "get",
           `/docs${path}`,
-          () => html(injectDocsScript(emulatorShellHtml(moduleName, doc))),
+          () =>
+            html(
+              injectDocsScript(emulatorShellHtml(moduleName, doc, {
+                producers,
+                dev: Boolean(devStatusPath),
+              })),
+            ),
         );
         // Standard Swagger UI for deeper inspection, moved under /swagger.
         adapter.registerRoute(
@@ -209,6 +284,19 @@ export class BootstrapServer {
           }) as RouteHandler,
         );
       }
+      // The whole-app system map: every module's endpoints as one process graph, with live
+      // run state read from the emulator sessions. Underscore-prefixed so a module named
+      // "map" can still own /docs/map.
+      adapter.registerRoute(
+        "get",
+        "/docs/_map",
+        () =>
+          html(
+            injectDocsScript(
+              mapShellHtml(appName, docs, { dev: Boolean(devStatusPath) }),
+            ),
+          ),
+      );
       // Public index: seeds the token from ?token into localStorage for the doc pages.
       adapter.registerRoute(
         "get",

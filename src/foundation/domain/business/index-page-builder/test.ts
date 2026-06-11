@@ -70,6 +70,22 @@ Deno.test("IndexPageBuilder handles multiple modules with styling", () => {
   assertStringIncludes(html, "</style>");
 });
 
+Deno.test("IndexPageBuilder renders a system map link when mapHref is given", () => {
+  const builder = new IndexPageBuilder();
+  const html = builder.build(["Users"], { mapHref: "docs/_map" });
+
+  assertStringIncludes(html, 'href="docs/_map"');
+  assertStringIncludes(html, "System map");
+});
+
+Deno.test("IndexPageBuilder omits the system map link without mapHref (backward compatible)", () => {
+  const builder = new IndexPageBuilder();
+  const html = builder.build(["Users"]);
+
+  assertEquals(html.includes("System map"), false);
+  assertEquals(html.includes('class="map-link"'), false);
+});
+
 Deno.test("IndexPageBuilder creates unique links for each module", () => {
   const builder = new IndexPageBuilder();
   const html = builder.build(["ModuleA", "ModuleB"]);

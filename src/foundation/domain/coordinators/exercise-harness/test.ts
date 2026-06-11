@@ -76,3 +76,350 @@ Deno.test("exerciseEndpoints - seeds satisfy an endpoint when no producer exists
     await server.stop();
   }
 });
+
+// ── external inputs ($var binds) ─────────────────────────────────────────────
+
+class JoinDto {
+  @ApiProperty()
+  tenantId!: string;
+}
+class MembershipDto {
+  @ApiProperty()
+  membershipId!: string;
+}
+
+@EndpointController("memberships")
+class MembershipsController {
+  // tenantId is produced by nothing in this app — it's a declared external input.
+  @Endpoint({
+    input: JoinDto,
+    output: MembershipDto,
+    order: 1,
+    bind: { tenantId: "$tenantId" },
+  })
+  join(body: JoinDto): MembershipDto {
+    if (!body?.tenantId) {
+      throw new Error("missing tenantId — $var was not resolved");
+    }
+    return { membershipId: `m-${body.tenantId}` };
+  }
+}
+
+const MembershipsModule = endpointModule("Memberships", [
+  MembershipsController,
+]);
+
+Deno.test("exerciseEndpoints - $var binds resolve from overrides.seeds", async () => {
+  const server = await bootstrapServer("harness-app", MembershipsModule);
+  try {
+    const report = await exerciseEndpoints({
+      api: server,
+      overrides: { seeds: { tenantId: "t-99" } },
+    });
+    assertEquals(report.failed.map((r) => r.id), []);
+    assertEquals(report.passed.map((r) => r.id), ["join"]);
+  } finally {
+    await server.stop();
+  }
+});
+
+Deno.test("exerciseEndpoints - an unseeded $var bind leaves the field unset (endpoint fails)", async () => {
+  const server = await bootstrapServer("harness-app", MembershipsModule);
+  try {
+    const report = await exerciseEndpoints({ api: server, maxIterations: 1 });
+    assertEquals(report.failed.map((r) => r.id), ["join"]);
+  } finally {
+    await server.stop();
+  }
+});
+
+// ── cross-module chaining (multi-module app) ─────────────────────────────────
+
+class OrderRefDto {
+  @ApiProperty()
+  userId!: string;
+}
+class OrderDto {
+  @ApiProperty()
+  orderId!: string;
+}
+
+@EndpointController("orders")
+class OrdersController {
+  // Binds the OTHER module's create output — the runner flattens all module docs into one graph.
+  @Endpoint({
+    input: OrderRefDto,
+    output: OrderDto,
+    order: 10,
+    dependsOn: "create",
+    bind: { userId: "create.id" },
+  })
+  place(body: OrderRefDto): OrderDto {
+    if (!body?.userId) {
+      throw new Error("missing userId — cross-module chaining did not happen");
+    }
+    return { orderId: `o-${body.userId}` };
+  }
+}
+
+const OrdersModule = endpointModule("Orders", [OrdersController]);
+
+Deno.test("exerciseEndpoints - chains across modules in a composed app", async () => {
+  const server = await bootstrapServer("harness-app", [
+    UsersModule,
+    OrdersModule,
+  ]);
+  try {
+    const report = await exerciseEndpoints({ api: server });
+    assertEquals(report.failed.map((r) => r.id), []);
+    // users.create runs before orders.place, and its id feeds the cross-module bind.
+    assert(report.order.indexOf("create") < report.order.indexOf("place"));
+  } finally {
+    await server.stop();
+  }
+});
+
+// ── contract auto-wiring ($input ← composed producer) ───────────────────────
+
+class EnrollDto {
+  @ApiProperty()
+  plan!: string;
+}
+class MemberDto {
+  @ApiProperty()
+  memberId!: string;
+}
+class GreetDto {
+  @ApiProperty()
+  memberId!: string;
+}
+class GreetedDto {
+  @ApiProperty()
+  greetedId!: string;
+}
+
+@EndpointController("members")
+class MembersController {
+  @Endpoint({ input: EnrollDto, output: MemberDto, order: 1 })
+  enroll(_body: EnrollDto): MemberDto {
+    return { memberId: "m-77" };
+  }
+}
+
+// What greet actually received — lets the tests tell a produced value from a seeded one.
+const greetReceived: string[] = [];
+
+@EndpointController("welcome")
+class WelcomeController {
+  // memberId is external to THIS module ($input) — but the composed members module produces it.
+  @Endpoint({
+    input: GreetDto,
+    output: GreetedDto,
+    order: 1,
+    bind: { memberId: "$memberId" },
+  })
+  greet(body: GreetDto): GreetedDto {
+    if (!body?.memberId) {
+      throw new Error("missing memberId — the contract was not auto-wired");
+    }
+    greetReceived.push(body.memberId);
+    return { greetedId: `g-${body.memberId}` };
+  }
+}
+
+const MembersModule = endpointModule("Members", [MembersController]);
+const WelcomeModule = endpointModule("Welcome", [WelcomeController]);
+
+Deno.test("exerciseEndpoints - a composed producer satisfies a $input with no seeds", async () => {
+  const server = await bootstrapServer("harness-app", [
+    MembersModule,
+    WelcomeModule,
+  ]);
+  try {
+    greetReceived.length = 0;
+    const report = await exerciseEndpoints({ api: server });
+    assertEquals(report.failed.map((r) => r.id), []);
+    // The synthetic contract edge orders the producer before the consumer.
+    assert(
+      report.order.indexOf("enroll") < report.order.indexOf("greet"),
+      `producer must run first: ${report.order}`,
+    );
+    assertEquals(greetReceived, ["m-77"]);
+  } finally {
+    await server.stop();
+  }
+});
+
+Deno.test("exerciseEndpoints - overrides.seeds beat the composed producer", async () => {
+  const server = await bootstrapServer("harness-app", [
+    MembersModule,
+    WelcomeModule,
+  ]);
+  try {
+    greetReceived.length = 0;
+    const report = await exerciseEndpoints({
+      api: server,
+      overrides: { seeds: { memberId: "seeded-1" } },
+    });
+    assertEquals(report.failed.map((r) => r.id), []);
+    // greet echoed the SEEDED value, not the producer's capture.
+    assertEquals(greetReceived, ["seeded-1"]);
+  } finally {
+    await server.stop();
+  }
+});
+
+Deno.test("exerciseEndpoints - the synthetic contract edge never leaks into the doc metadata", async () => {
+  // The SpecEndpoint objects are fresh per run, but their dependsOn arrays alias the doc's
+  // x-keep-process (and, through it, the decorator metadata). The synthetic producer edge must
+  // stay private to the run: leaking "enroll" into greet's dependsOn would block the emulator's
+  // run-all (the edge points outside the page) for every later bootstrap in the same process.
+  const dependsOnOf = (api: { docs: { path: string; doc: unknown }[] }) => {
+    const doc = api.docs.find((d) => d.path === "/welcome")!
+      .doc as {
+        paths: Record<
+          string,
+          { post?: { "x-keep-process"?: { dependsOn?: string[] } } }
+        >;
+      };
+    return doc.paths["/welcome"].post!["x-keep-process"]!.dependsOn ?? [];
+  };
+  const server = await bootstrapServer("harness-app", [
+    MembersModule,
+    WelcomeModule,
+  ]);
+  try {
+    const report = await exerciseEndpoints({ api: server });
+    assertEquals(report.failed.map((r) => r.id), []);
+    assertEquals(dependsOnOf(server), []);
+  } finally {
+    await server.stop();
+  }
+  // A brand-new bootstrap in the same process sees clean metadata too.
+  const fresh = await bootstrapServer("harness-app", [
+    MembersModule,
+    WelcomeModule,
+  ]);
+  try {
+    assertEquals(dependsOnOf(fresh), []);
+  } finally {
+    await fresh.stop();
+  }
+});
+
+// ── flows (XOR branches) + OR-bind + optional ────────────────────────────────
+
+class StartDto {
+  @ApiProperty()
+  kind!: string;
+}
+class TicketDto {
+  @ApiProperty()
+  ticketId!: string;
+}
+class PayDto {
+  @ApiProperty()
+  ticketId!: string;
+}
+class PaymentDto {
+  @ApiProperty()
+  paymentId!: string;
+}
+class FulfillDto {
+  @ApiProperty()
+  paymentId!: string;
+}
+class DoneDto {
+  @ApiProperty()
+  done!: boolean;
+}
+
+@EndpointController("checkout")
+class CheckoutController {
+  @Endpoint({ path: "start", input: StartDto, output: TicketDto, order: 1 })
+  start(_body: StartDto): TicketDto {
+    return { ticketId: "t-1" };
+  }
+
+  @Endpoint({
+    path: "pay-card",
+    input: PayDto,
+    output: PaymentDto,
+    order: 2,
+    dependsOn: "start",
+    bind: { ticketId: "start.ticketId" },
+    flows: "card",
+  })
+  payCard(body: PayDto): PaymentDto {
+    if (!body?.ticketId) throw new Error("missing ticketId");
+    return { paymentId: `card-${body.ticketId}` };
+  }
+
+  @Endpoint({
+    path: "pay-cash",
+    input: PayDto,
+    output: PaymentDto,
+    order: 2,
+    dependsOn: "start",
+    bind: { ticketId: "start.ticketId" },
+    flows: "cash",
+  })
+  payCash(body: PayDto): PaymentDto {
+    if (!body?.ticketId) throw new Error("missing ticketId");
+    return { paymentId: `cash-${body.ticketId}` };
+  }
+
+  // The join: depends on every alternative; the OR-bind takes whichever payment ran.
+  @Endpoint({
+    path: "fulfill",
+    input: FulfillDto,
+    output: DoneDto,
+    order: 3,
+    dependsOn: ["payCard", "payCash"],
+    bind: { paymentId: ["payCard.paymentId", "payCash.paymentId"] },
+  })
+  fulfill(body: FulfillDto): DoneDto {
+    if (!body?.paymentId) {
+      throw new Error("missing paymentId — OR-bind did not resolve");
+    }
+    return { done: true };
+  }
+
+  // A side quest that always fails — must not fail the report.
+  @Endpoint({
+    path: "survey",
+    input: StartDto,
+    output: DoneDto,
+    order: 4,
+    optional: true,
+  })
+  survey(_body: StartDto): DoneDto {
+    throw new Error("nobody answers surveys");
+  }
+}
+
+const CheckoutModule = endpointModule("Checkout", [CheckoutController]);
+
+Deno.test("exerciseEndpoints - a flow exercises one branch; OR-bind takes the survivor", async () => {
+  const server = await bootstrapServer("harness-app", CheckoutModule);
+  try {
+    const card = await exerciseEndpoints({ api: server, flow: "card" });
+    // payCash is excluded; everything else (incl. untagged start/fulfill/survey) runs.
+    assert(
+      !card.order.includes("payCash"),
+      `cash branch leaked into the card flow: ${card.order}`,
+    );
+    assertEquals(card.failed.map((r) => r.id), []);
+    assertEquals(card.optionalFailed.map((r) => r.id), ["survey"]);
+    assert(
+      card.passed.map((r) => r.id).includes("fulfill"),
+      "the join must pass via the card branch",
+    );
+
+    const cash = await exerciseEndpoints({ api: server, flow: "cash" });
+    assert(!cash.order.includes("payCard"));
+    assertEquals(cash.failed.map((r) => r.id), []);
+  } finally {
+    await server.stop();
+  }
+});

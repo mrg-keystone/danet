@@ -25,9 +25,11 @@ export class IndexPageBuilder {
   /**
    * Build HTML page with links to each named documentation page
    * @param names - List of documentation names (e.g., module names)
+   * @param extras - Optional additions: `mapHref` renders a "system map" link to the
+   *   whole-app process graph page. Omitted ⇒ the page is unchanged (backward compatible).
    * @returns HTML string for the index page
    */
-  build(names: string[]): string {
+  build(names: string[], extras: { mapHref?: string } = {}): string {
     const links = names.map((n) => {
       return {
         name: this.cleanName(n),
@@ -52,6 +54,7 @@ export class IndexPageBuilder {
       title: "API Documentation",
       links,
       particles,
+      mapHref: extras.mapHref,
     });
   }
 }

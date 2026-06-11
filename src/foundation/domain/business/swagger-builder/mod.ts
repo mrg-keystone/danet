@@ -40,8 +40,10 @@ export class SwaggerBuilder {
     // Index from the CRAWLED modules, not server.moduleNames — the server only
     // registers the root module, so an imported module would get a /docs/<name>
     // page but no card on the index.
+    // The system map link is relative for the same mount-prefix reason as the cards above.
     const docsIndexHtml = this.indexPageBuilder.build(
       allModules.map((m) => m.name),
+      { mapHref: "docs/_map" },
     );
     return { swaggerDocs, docsIndexHtml };
   }

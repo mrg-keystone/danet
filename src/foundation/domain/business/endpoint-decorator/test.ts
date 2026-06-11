@@ -123,6 +123,9 @@ Deno.test("Endpoint - Swagger doc carries paths and DTO schemas", async () => {
     order: 2,
     dependsOn: ["create"],
     bind: { id: "create.id" },
+    flows: [],
+    optional: false,
+    stub: false,
     method: "post",
     path: "fetch",
   });

@@ -2,7 +2,10 @@
   "version": "5",
   "specifiers": {
     "jsr:@danet/core@2": "2.10.0",
+    "jsr:@danet/core@2.4.1": "2.4.1",
     "jsr:@danet/core@^2.5.1": "2.10.0",
+    "jsr:@danet/handlebars@0.0.1": "0.0.1",
+    "jsr:@danet/swagger@2.1.1": "2.1.1",
     "jsr:@danet/swagger@^2.1.1": "2.3.2",
     "jsr:@danet/validatte@0.7.4": "0.7.4",
     "jsr:@danet/zod@0.0.7": "0.0.7",
@@ -10,22 +13,36 @@
     "jsr:@hono/hono@4.6.3": "4.6.3",
     "jsr:@std/assert@*": "1.0.18",
     "jsr:@std/fmt@0.223.0": "0.223.0",
+    "jsr:@std/fs@1.0.4": "1.0.4",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/path@1.0.6": "1.0.6",
+    "jsr:@std/path@^1.0.6": "1.0.6",
     "jsr:@std/semver@1": "1.0.8",
     "jsr:@std/yaml@*": "1.0.12",
     "npm:@anatine/zod-openapi@2.2.6": "2.2.6_openapi3-ts@4.5.0_zod@3.23.8",
     "npm:@types/node@*": "24.2.0",
     "npm:awesome-phonenumber@7.1.0": "7.1.0",
+    "npm:handlebars@4.7.7": "4.7.7",
     "npm:jose@5": "5.10.0",
     "npm:openapi3-ts@4.5.0": "4.5.0",
     "npm:path-to-regexp@6.2.1": "6.2.1",
+    "npm:playwright@*": "1.57.0",
     "npm:playwright@^1.49.0": "1.57.0",
     "npm:reflect-metadata@0.1.13": "0.1.13",
     "npm:zod@3": "3.23.8",
     "npm:zod@3.23.8": "3.23.8"
   },
   "jsr": {
+    "@danet/core@2.4.1": {
+      "integrity": "ef643bddbc0d36f53db8ebf8e201d2f5f80ca9d7fb8d620cfc691c4a925d48db",
+      "dependencies": [
+        "jsr:@danet/handlebars",
+        "jsr:@danet/validatte",
+        "jsr:@dx/reflect",
+        "jsr:@hono/hono",
+        "jsr:@std/fmt"
+      ]
+    },
     "@danet/core@2.10.0": {
       "integrity": "309ec39d31ea50dbe1de16fb55818da6a903c75ae8222780dcbc3cd715c5e152",
       "dependencies": [
@@ -35,12 +52,28 @@
         "jsr:@std/fmt"
       ]
     },
+    "@danet/handlebars@0.0.1": {
+      "integrity": "f06d6c29f1a449e31359b4bc44cb4f72bc257757801c79e54e7e9651655bbea0",
+      "dependencies": [
+        "jsr:@std/fs",
+        "jsr:@std/path@1.0.6",
+        "npm:handlebars"
+      ]
+    },
+    "@danet/swagger@2.1.1": {
+      "integrity": "c70be388879b7917a3b4de42cbfcf0c190c33396e758f5c7eb2a0428989a9ada",
+      "dependencies": [
+        "jsr:@danet/core@2.4.1",
+        "jsr:@std/path@1.0.6",
+        "npm:path-to-regexp"
+      ]
+    },
     "@danet/swagger@2.3.2": {
       "integrity": "3c6dbc0eff37ce9fa9bf338f1876e607264d895efcc41ac8726da417f26e9658",
       "dependencies": [
         "jsr:@danet/core@2",
         "jsr:@danet/zod",
-        "jsr:@std/path",
+        "jsr:@std/path@1.0.6",
         "npm:@anatine/zod-openapi",
         "npm:path-to-regexp",
         "npm:zod@3.23.8"
@@ -73,6 +106,12 @@
     },
     "@std/fmt@0.223.0": {
       "integrity": "6deb37794127dfc7d7bded2586b9fc6f5d50e62a8134846608baf71ffc1a5208"
+    },
+    "@std/fs@1.0.4": {
+      "integrity": "2907d32d8d1d9e540588fd5fe0ec21ee638134bd51df327ad4e443aaef07123c",
+      "dependencies": [
+        "jsr:@std/path@^1.0.6"
+      ]
     },
     "@std/internal@1.0.12": {
       "integrity": "972a634fd5bc34b242024402972cd5143eac68d8dffaca5eaa4dba30ce17b027"
@@ -110,8 +149,27 @@
       "os": ["darwin"],
       "scripts": true
     },
+    "handlebars@4.7.7": {
+      "integrity": "sha512-aAcXm5OAfE/8IXkcZvCepKU3VzW1/39Fb5ZuqMtgI/hT8X2YgoMvBY5dLhq/cpOvw7Lk1nK/UF71aLG/ZnVYRA==",
+      "dependencies": [
+        "minimist",
+        "neo-async",
+        "source-map",
+        "wordwrap"
+      ],
+      "optionalDependencies": [
+        "uglify-js"
+      ],
+      "bin": true
+    },
     "jose@5.10.0": {
       "integrity": "sha512-s+3Al/p9g32Iq+oqXxkW//7jk2Vig6FF1CFqzVXoTUXt2qz89YWbL+OwS17NFYEvxC35n0FKeGO2LGYSxeM2Gg=="
+    },
+    "minimist@1.2.8": {
+      "integrity": "sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA=="
+    },
+    "neo-async@2.6.2": {
+      "integrity": "sha512-Yd3UES5mWCSqR+qNT93S3UoYUkqAZ9lLg8a7g9rimsWmYGK8cVToA4/sF3RrshdyV3sAGMXVUmpMYOw+dLpOuw=="
     },
     "openapi3-ts@4.5.0": {
       "integrity": "sha512-jaL+HgTq2Gj5jRcfdutgRGLosCy/hT8sQf6VOy+P+g36cZOjI1iukdPnijC+4CmeRzg/jEllJUboEic2FhxhtQ==",
@@ -139,11 +197,21 @@
     "reflect-metadata@0.1.13": {
       "integrity": "sha512-Ts1Y/anZELhSsjMcU605fU9RE4Oi3p5ORujwbIKXfWa+0Zxs510Qrmrce5/Jowq3cHSZSJqBjypxmHarc+vEWg=="
     },
+    "source-map@0.6.1": {
+      "integrity": "sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g=="
+    },
     "ts-deepmerge@6.2.1": {
       "integrity": "sha512-8CYSLazCyj0DJDpPIxOFzJG46r93uh6EynYjuey+bxcLltBeqZL7DMfaE5ZPzZNFlav7wx+2TDa/mBl8gkTYzw=="
     },
+    "uglify-js@3.19.3": {
+      "integrity": "sha512-v3Xu+yuwBXisp6QYTcH4UbH+xYJXqnq2m/LtQVWKWzYc1iehYnLixoQDN9FH6/j9/oybfd6W9Ghwkl8+UMKTKQ==",
+      "bin": true
+    },
     "undici-types@7.10.0": {
       "integrity": "sha512-t5Fy/nfn+14LuOc2KNYg75vZqClpAiqscVvMygNnlsHBFpSXdJaYtXMcdNLpl/Qvc3P2cB3s6lOV51nqsFq4ag=="
+    },
+    "wordwrap@1.0.0": {
+      "integrity": "sha512-gvVzJFlPycKc5dZN4yPkP8w7Dc37BtP1yczEneOb4uq34pXZcvrtRTmWV8W+Ume+XCxKgbjM+nevkyFPMybd4Q=="
     },
     "yaml@2.8.3": {
       "integrity": "sha512-AvbaCLOO2Otw/lW5bmh9d/WEdcDFdQp2Z2ZUH3pX9U2ihyUY0nvLv7J6TrWowklRGPYbB/IuIMfYgxaCPg5Bpg==",

@@ -92,8 +92,8 @@ Deno.test("global guard: deny-by-default for controllers, @Public exempts", asyn
     const loopback = {
       remoteAddr: { transport: "tcp", hostname: "127.0.0.1", port: 1 },
     };
-    // deno-lint-ignore no-explicit-any
     const net = (path: string, init?: RequestInit) =>
+      // deno-lint-ignore no-explicit-any
       server.handler(new Request(`http://app${path}`, init), remote as any);
 
     // Protected controller: network caller without a credential → 401.
@@ -116,9 +116,9 @@ Deno.test("global guard: deny-by-default for controllers, @Public exempts", asyn
     assertEquals((await ok.json()).secret, true);
 
     // Localhost is trusted → no credential needed.
-    // deno-lint-ignore no-explicit-any
     const local = await server.handler(
       new Request("http://app/secret"),
+      // deno-lint-ignore no-explicit-any
       loopback as any,
     );
     assertEquals(local.status, 200);
@@ -257,6 +257,56 @@ Deno.test("bootstrapServer - stop() cleans up properly", async () => {
   } catch (error) {
     assertExists(error);
   }
+});
+
+Deno.test("dev channel: /docs/_dev serves bootId + status under KEEP_DEV, tolerantly", async () => {
+  const statusPath = await Deno.makeTempDir() + "/status.json";
+  Deno.env.set("KEEP_DEV", statusPath);
+  try {
+    const port = portCounter++;
+    const server = await bootstrapServer("test-app", AppModule, { port });
+    const call = () => server.handler(new Request("http://app/docs/_dev"));
+
+    // Status file not written yet → bootId alone.
+    const bare = await (await call()).json();
+    assertExists(bare.bootId);
+    assertEquals(bare.ok, undefined);
+
+    // The watcher wrote a failing check → errors travel through, bootId stays.
+    await Deno.writeTextFile(
+      statusPath,
+      JSON.stringify({ ok: false, errors: ["bad indent at line 3"], at: "t1" }),
+    );
+    const failing = await (await call()).json();
+    assertEquals(failing.bootId, bare.bootId);
+    assertEquals(failing.ok, false);
+    assertEquals(failing.errors, ["bad indent at line 3"]);
+
+    // Corrupt (partial) write → degrade to bootId only, never a 500.
+    await Deno.writeTextFile(statusPath, '{"ok": fal');
+    const corrupt = await call();
+    assertEquals(corrupt.status, 200);
+    const degraded = await corrupt.json();
+    assertEquals(degraded, { bootId: bare.bootId });
+
+    // The emulator page carries the reload poller in dev mode.
+    const page = await server.handler(new Request("http://app/docs/app"));
+    assertStringIncludes(await page.text(), 'fetch("_dev")');
+  } finally {
+    Deno.env.delete("KEEP_DEV");
+  }
+});
+
+Deno.test("dev channel: /docs/_dev absent (404) without KEEP_DEV; pages carry no poller", async () => {
+  const port = portCounter++;
+  const server = await bootstrapServer("test-app", AppModule, { port });
+
+  const res = await server.handler(new Request("http://app/docs/_dev"));
+  assertEquals(res.status, 404);
+  await res.body?.cancel();
+
+  const page = await server.handler(new Request("http://app/docs/app"));
+  assertEquals((await page.text()).includes('fetch("_dev")'), false);
 });
 
 @Controller("alpha")

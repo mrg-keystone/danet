@@ -665,26 +665,98 @@ export const api = await bootstrapServer(
 
 `EndpointOptions`: `method` (default `"post"`), `path`, `input`/`output` DTO
 classes, `order` (ascending), `dependsOn` (endpoint id(s) — handler method
-names), `bind` (`{ thisInputField: "otherEndpointId.outputField" }`),
-`description`. The metadata rides into each module's OpenAPI doc as an
-**`x-keep-process`** vendor extension.
+names), `bind`, `flows`, `optional`, `stub`, `description`. The metadata rides
+into each module's OpenAPI doc as an **`x-keep-process`** vendor extension.
+
+`bind` values come in three forms:
+
+- `"otherEndpointId.outputField"` — fill this field from a captured response;
+- `"$name"` — an **external input** nothing in this module produces (an id
+  minted by another module, a tenant key): the emulator lists it under
+  **Module inputs** and the runner takes it from `overrides.seeds[name]`;
+- `["payCard.paymentId", "payCash.paymentId"]` — **alternatives**, first
+  resolvable wins (the join after a branch).
+
+`flows: "card"` puts the endpoint in a named branch — untagged endpoints belong
+to every flow; the emulator gets a flow selector and dependencies on endpoints
+outside the active flow don't gate (so a join can depend on every alternative).
+`optional: true` marks a step that's attempted but never blocks the walk.
+`stub: true` marks a **generated stand-in** endpoint that mints placeholder
+values — not part of the real process. The emulator badges it with a `stub`
+chip, and the contract auto-wiring treats it as a producer like any other (this
+is what [`rune`](https://github.com/mrg-keystone/rune)'s ghost-stub module
+generates for external inputs nothing produces yet).
 
 ### The process emulator (per module)
 
 With Swagger on (default), each module gets three docs pages:
 
-| Path                     | What                                                                   |
-| ------------------------ | ---------------------------------------------------------------------- |
-| `/docs/<module>`         | the **process emulator** — endpoints as an ordered, bulleted checklist |
-| `/docs/<module>/swagger` | the standard Swagger UI (deep inspection)                              |
-| `/docs/<module>/json`    | the raw OpenAPI spec (token-gated; see [Docs access](#docs-access))    |
+| Path                     | What                                                                 |
+| ------------------------ | -------------------------------------------------------------------- |
+| `/docs/<module>`         | the **process emulator** — a Postman-style guided walk of the chain |
+| `/docs/<module>/swagger` | the standard Swagger UI (deep inspection)                            |
+| `/docs/<module>/json`    | the raw OpenAPI spec (token-gated; see [Docs access](#docs-access))  |
 
-The emulator lists endpoints in `order`/`dependsOn` order. Expand a bullet to
-see its request (curl + editable JSON body); click **Emulate process** to fire
-the real request and see the response. On success it drops a checkmark, captures
-the output, and **unlocks the next dependent step with its request pre-filled**
-(via `bind`). A **Run all in order** button walks the whole chain. Walking the
-list and eyeballing each response verifies the module's logic end-to-end.
+The emulator lists endpoints in `order`/`dependsOn` order. Each step's request
+body is generated from the DTO schema, with bound fields holding
+**`{{step.field}}` references** that resolve against captured responses when
+the request is sent — so your hand edits are never overwritten, and any value
+can reference any earlier output (or a variable you define yourself). Run a
+step and on success it drops a checkmark with status + timing, **captures its
+outputs into a live variables panel**, and unlocks its dependents. A
+**Run all in order** button walks the chain and stops on the first failure
+with a banner saying exactly where and why; fix the step and run again to
+resume. Each step shows the concrete request it _will send_, the response, and
+a paste-ready curl. The session (statuses, captured outputs, variables, edited
+bodies) survives reloads — **Reset session** starts fresh. Walking the list
+and eyeballing each response verifies the module's logic end-to-end.
+
+Beyond the chain: a module with `flows` gets a **flow selector** (walk one
+branch at a time; run-all walks the active flow); declared `$inputs` appear in
+a **Module inputs** card. Variables are shared **across modules**: every
+captured output is also published as `{{module:step.field}}`, user variables
+form a global environment, and references resolve recursively — point a module
+input at `{{members:create.memberId}}` once and every re-run upstream feeds it
+fresh. Dependency cycles are called out in a banner instead of leaving steps
+mutely locked.
+
+Composed modules **snap together** without any of that typing: when another
+module in the app has an endpoint whose output carries the same field name as
+a declared `$input`, the Module-inputs row shows a dim **`auto:
+<module>:<endpoint>`** note instead of the amber "not set" state, and the
+input is satisfied automatically from that producer's shared capture — run the
+producer once (in any tab) and the consumer module just works. Typing a value
+overrides the auto-wiring; clearing it back to empty returns to auto.
+Endpoints declared `stub: true` carry an amber **`stub`** chip marking them as
+generated stand-ins minting placeholder values, not part of the real process.
+
+### The system map — `/docs/_map`
+
+`/docs/_map` renders the **whole composed app as one process graph**: every
+module's endpoints as nodes grouped into module lanes, ordered left-to-right
+by dependency depth. Solid edges are intra-module binds (`"step.field"`
+autofill); **dashed edges** are `"$input"` contracts satisfied by a producer
+in another module; a `$name` nothing produces shows as an amber input badge on
+its consumer. Flows tint their edges, and optional/stub endpoints carry chips.
+The map is **live**: each node's status dot recolors from the emulator
+sessions in `localStorage` — run a step on any docs page (any tab) and the map
+updates. Clicking a node **deep-links** into that module's emulator with the
+step expanded (`/docs/<module>#<endpointId>`). (Underscore-prefixed so a
+module named "map" can still own `/docs/map`.)
+
+### Dev mode — `KEEP_DEV` and `/docs/_dev`
+
+Set **`KEEP_DEV=<status-file path>`** and `bootstrapServer` serves a
+**`/docs/_dev`** JSON endpoint (the status file's contents plus the process's
+`bootId`) and injects a small poller into every emulator/map page. The pages
+poll `_dev` while visible and **auto-reload when the `bootId` changes** (a new
+process is serving); status-file `errors` render in the page banner, and a
+"server restarting…" notice appears while the server is unreachable. Session
+state lives in `localStorage`, so statuses, captures, and edited bodies
+survive the reload. This is the channel
+[`rune dev`](https://github.com/mrg-keystone/rune) drives — its watcher
+checks/re-syncs the spec on save, restarts the app under `KEEP_DEV`, and the
+open docs pages pick up the new boot by themselves.
 
 ### `exerciseEndpoints(opts)` — headless runner
 
@@ -696,7 +768,10 @@ outputs into inputs via `bind`, rate-limits, and loops until green.
 import { exerciseEndpoints } from "@mrg-keystone/keep";
 
 const report = await exerciseEndpoints({ api }); // in-process (backend.fetch), no token
-// report: { passed, failed, iterations, order, cycles }
+// report: { passed, failed, optionalFailed, iterations, order, cycles }
+
+// One branch at a time, with external inputs seeded:
+await exerciseEndpoints({ api, flow: "card", overrides: { seeds: { memberId: "m-7" } } });
 ```
 
 - **Transport.** No `baseUrl` → dispatches in-process via `backend.fetch` (no
@@ -706,6 +781,14 @@ const report = await exerciseEndpoints({ api }); // in-process (backend.fetch), 
   (per-endpoint overrides by id — win over `bind`), and `auth`
   (`{kind:"in-process"}` default, or `{kind:"token"|"mint", …}` using
   [`signToken`](#programmatic-sign--verify) for network/`baseUrl` runs).
+- **`$`-input resolution order.** A `"$name"` bind resolves from
+  `overrides.seeds[name]` first — a seed always wins. With no seed,
+  **composition fulfills the contract**: the value falls back to the first
+  captured response (in run order) owning a same-named field, from any
+  composed module. The runner adds a synthetic dependency edge from the
+  consumer to that producer, so the producer runs first and the fallback hits
+  on pass one — a composed app with stub or real producers needs no seeds at
+  all.
 - **`rateLimit`** (`{ requestsPerSecond?, maxConcurrency? }`) and
   **`maxIterations`** (default 5).
 
