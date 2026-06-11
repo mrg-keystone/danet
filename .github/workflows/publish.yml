@@ -87,6 +87,13 @@ jobs:
           jq --arg v "$NEW" '.version = $v' deno.json > deno.json.tmp && mv deno.json.tmp deno.json
           echo "version=$NEW" >> "$GITHUB_OUTPUT"
           echo "bumped=true" >> "$GITHUB_OUTPUT"
+      - name: Preflight — emulate JSR's server-side checks locally
+        # Catches in seconds what the server would reject after ~10 minutes:
+        # registry-dependent jsr: subpath validation (the 1.13.6 failure) plus
+        # everything `deno publish --dry-run` covers (packaging, type-check).
+        run: |
+          deno run --allow-net --allow-read scripts/check-jsr-deps.ts
+          deno publish --dry-run --allow-dirty --no-provenance --allow-slow-types
       - name: Publish to JSR (poll API — deno publish does not exit after success)
         run: |
           set -uo pipefail

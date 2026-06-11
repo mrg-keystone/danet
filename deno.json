@@ -19,6 +19,7 @@
     "e2e/cake/"
   ],
   "tasks": {
+    "check:jsr": "deno run --allow-net --allow-read scripts/check-jsr-deps.ts && deno publish --dry-run --allow-dirty --no-provenance --allow-slow-types",
     "test": "deno test -A --unstable-raw-imports",
     "test:e2e": "deno test -A --unstable-raw-imports --config e2e/cake/deno.json e2e/cake/",
     "cake": "deno run -A npm:playwright install chromium chromium-headless-shell && KEEP_BROWSER=1 KEEP_HEADED=1 deno test -A --unstable-raw-imports --config e2e/cake/deno.json e2e/cake/cake.e2e.test.ts",
