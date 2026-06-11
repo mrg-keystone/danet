@@ -35,7 +35,14 @@ class ThingsController {
   create(body: CreateDto): ThingDto {
     return { id: "t_1", name: body.name ?? "anon" };
   }
-  @Endpoint({ path: "fetch", input: RefDto, output: ThingDto, order: 2, dependsOn: "create", bind: { id: "create.id" } })
+  @Endpoint({
+    path: "fetch",
+    input: RefDto,
+    output: ThingDto,
+    order: 2,
+    dependsOn: "create",
+    bind: { id: "create.id" },
+  })
   fetch(body: RefDto): ThingDto {
     if (!body?.id) throw new Error("missing id");
     return { id: body.id, name: "fetched" };
@@ -45,14 +52,18 @@ class ThingsController {
 const ThingsModule = endpointModule("Things", [ThingsController]);
 
 Deno.test({
-  name: "exerciseEndpoints - drives the chain over HTTP via Playwright (loopback, no token)",
+  name:
+    "exerciseEndpoints - drives the chain over HTTP via Playwright (loopback, no token)",
   ignore: !enabled,
   fn: async () => {
     const port = 9555;
     const server = await bootstrapServer("smk-app", ThingsModule, { port });
     await server.listen();
     try {
-      const report = await exerciseEndpoints({ api: server, baseUrl: `http://localhost:${port}` });
+      const report = await exerciseEndpoints({
+        api: server,
+        baseUrl: `http://localhost:${port}`,
+      });
       assertEquals(report.failed.map((r) => r.id), []);
       assertEquals(report.passed.map((r) => r.id).sort(), ["create", "fetch"]);
     } finally {

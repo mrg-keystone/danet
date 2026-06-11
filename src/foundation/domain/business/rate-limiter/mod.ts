@@ -16,11 +16,16 @@ export interface Limiter {
   run<T>(fn: () => Promise<T>): Promise<T>;
 }
 
-const delay = (ms: number) => ms <= 0 ? Promise.resolve() : new Promise<void>((r) => setTimeout(r, ms));
+const delay = (ms: number) =>
+  ms <= 0 ? Promise.resolve() : new Promise<void>((r) => setTimeout(r, ms));
 
 export function createLimiter(opts: RateLimitOptions = {}): Limiter {
-  const rps = opts.requestsPerSecond && opts.requestsPerSecond > 0 ? opts.requestsPerSecond : 20;
-  const maxConcurrency = opts.maxConcurrency && opts.maxConcurrency > 0 ? opts.maxConcurrency : 4;
+  const rps = opts.requestsPerSecond && opts.requestsPerSecond > 0
+    ? opts.requestsPerSecond
+    : 20;
+  const maxConcurrency = opts.maxConcurrency && opts.maxConcurrency > 0
+    ? opts.maxConcurrency
+    : 4;
   const interval = 1000 / rps;
 
   let active = 0;

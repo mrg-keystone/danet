@@ -1,5 +1,5 @@
 import { assertEquals } from "#assert";
-import { InjectValue, InjectFactory, InjectClass } from "./mod.ts";
+import { InjectClass, InjectFactory, InjectValue } from "./mod.ts";
 
 Deno.test("InjectValue stores provide and useValue", () => {
   const inject = new InjectValue("TOKEN", "my-value");

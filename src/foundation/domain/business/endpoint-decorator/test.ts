@@ -1,7 +1,12 @@
 import "#reflect-metadata";
 import { assert, assertEquals, assertExists } from "#assert";
 import { ApiProperty } from "#danet/swagger/decorators";
-import { Endpoint, EndpointController, endpointModule, getProcessMetadata } from "./mod.ts";
+import {
+  Endpoint,
+  EndpointController,
+  endpointModule,
+  getProcessMetadata,
+} from "./mod.ts";
 import { Server } from "@foundation/domain/business/server/mod.ts";
 import { SwaggerBuilder } from "@foundation/domain/business/swagger-builder/mod.ts";
 import { bootstrapServer } from "@foundation/domain/coordinators/bootstrap-server/mod.ts";
@@ -45,7 +50,9 @@ class UsersController {
 const UsersModule = endpointModule("Users", [UsersController]);
 
 Deno.test("Endpoint - route is served and runs the handler (in-process)", async () => {
-  const server = await bootstrapServer("dec-app", UsersModule, { swagger: false });
+  const server = await bootstrapServer("dec-app", UsersModule, {
+    swagger: false,
+  });
   try {
     const res = await server.backend.fetch("/users", {
       method: "POST",
@@ -60,7 +67,9 @@ Deno.test("Endpoint - route is served and runs the handler (in-process)", async 
 });
 
 Deno.test("Endpoint - chained route receives a body and returns it", async () => {
-  const server = await bootstrapServer("dec-app", UsersModule, { swagger: false });
+  const server = await bootstrapServer("dec-app", UsersModule, {
+    swagger: false,
+  });
   try {
     const res = await server.backend.fetch("/users/fetch", {
       method: "POST",
@@ -90,7 +99,9 @@ Deno.test("Endpoint - Swagger doc carries paths and DTO schemas", async () => {
 
   // Request + response schemas wired through BodyType/ReturnedType.
   const createOp = doc.paths["/users"]!.post!;
-  const ref = (createOp.requestBody as { content: Record<string, { schema: { $ref: string } }> })
+  const ref = (createOp.requestBody as {
+    content: Record<string, { schema: { $ref: string } }>;
+  })
     .content["application/json"].schema.$ref;
   assertEquals(ref, "#/components/schemas/CreateUserDto");
 
@@ -99,10 +110,15 @@ Deno.test("Endpoint - Swagger doc carries paths and DTO schemas", async () => {
   assertExists(schemas.UserDto);
   assertExists(schemas.UserRefDto);
   // DTO field made it into the schema.
-  assertExists((schemas.UserDto as { properties: Record<string, unknown> }).properties.id);
+  assertExists(
+    (schemas.UserDto as { properties: Record<string, unknown> }).properties.id,
+  );
 
   // Process metadata travels with the spec as the x-keep-process vendor extension.
-  const fetchOp = doc.paths["/users/fetch"]!.post! as unknown as Record<string, unknown>;
+  const fetchOp = doc.paths["/users/fetch"]!.post! as unknown as Record<
+    string,
+    unknown
+  >;
   assertEquals(fetchOp["x-keep-process"], {
     order: 2,
     dependsOn: ["create"],

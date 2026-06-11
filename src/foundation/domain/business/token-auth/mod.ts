@@ -1,7 +1,10 @@
 import type { Context, MiddlewareHandler } from "#hono";
 import { ForbiddenException, UnauthorizedException } from "#danet/core";
 import type { Logger } from "@foundation/domain/business/logger/mod.ts";
-import { TokenError, verifyToken } from "@foundation/domain/business/token/mod.ts";
+import {
+  TokenError,
+  verifyToken,
+} from "@foundation/domain/business/token/mod.ts";
 import { INTERNAL_REQUEST_HEADER } from "@foundation/domain/business/backend-client/mod.ts";
 import type { FirebaseVerifier } from "@foundation/domain/business/firebase-auth/mod.ts";
 import { isPublicContext } from "@foundation/domain/business/public-route/mod.ts";
@@ -48,8 +51,16 @@ export interface TokenAuthConfig {
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
-export function createTokenAuthMiddleware(config: TokenAuthConfig): MiddlewareHandler {
-  const { signingKey, logger, internalKey, firebaseVerifier, publicPaths = [] } = config;
+export function createTokenAuthMiddleware(
+  config: TokenAuthConfig,
+): MiddlewareHandler {
+  const {
+    signingKey,
+    logger,
+    internalKey,
+    firebaseVerifier,
+    publicPaths = [],
+  } = config;
   const trustLocalhost = config.trustLocalhost ?? true;
 
   return async (c, next) => {
@@ -72,14 +83,19 @@ export function createTokenAuthMiddleware(config: TokenAuthConfig): MiddlewareHa
       } catch (err) {
         // With no Firebase fallback, report the specific reason; otherwise try Firebase.
         if (!firebaseVerifier) {
-          const detail = err instanceof TokenError ? err.message : "Invalid access token.";
+          const detail = err instanceof TokenError
+            ? err.message
+            : "Invalid access token.";
           return unauthorized(c, detail);
         }
       }
     }
 
     // 2) Firebase Auth ID token (e.g. from the browser/frontend).
-    if (firebaseVerifier && await tryVerifyFirebase(token, firebaseVerifier, logger)) {
+    if (
+      firebaseVerifier &&
+      await tryVerifyFirebase(token, firebaseVerifier, logger)
+    ) {
       return await next();
     }
 
@@ -128,7 +144,9 @@ export interface CredentialGuardConfig {
 /** Scopes namespaced `appName:role` claims to this app, returning the bare role names. */
 export function scopeRoles(roles: string[], appName: string): string[] {
   const prefix = `${appName}:`;
-  return roles.filter((r) => r.startsWith(prefix)).map((r) => r.slice(prefix.length));
+  return roles.filter((r) => r.startsWith(prefix)).map((r) =>
+    r.slice(prefix.length)
+  );
 }
 
 /** A Danet guard: returns true to allow, throws to reject. */
@@ -148,7 +166,9 @@ export interface DanetGuard {
  * This replaces the standalone Hono middleware: as a guard it can read the per-route `@Public`
  * metadata (via `context.getHandler()` / `getClass()`), which middleware can't see.
  */
-export function createCredentialGuard(config: CredentialGuardConfig): DanetGuard {
+export function createCredentialGuard(
+  config: CredentialGuardConfig,
+): DanetGuard {
   const trustLocalhost = config.trustLocalhost ?? true;
 
   return {
@@ -162,7 +182,9 @@ export function createCredentialGuard(config: CredentialGuardConfig): DanetGuard
       const isPublic = isPublicContext(ctx);
       const roles = requiredRoles(ctx);
 
-      if (isTrustedOrigin(context, config.internalKey, trustLocalhost)) return true;
+      if (isTrustedOrigin(context, config.internalKey, trustLocalhost)) {
+        return true;
+      }
 
       // Credential from `Authorization: Bearer`, or the `?token=` query param. The query form
       // lets a plain link / WS upgrade (which can't set headers) carry the token; a browser
@@ -178,9 +200,14 @@ export function createCredentialGuard(config: CredentialGuardConfig): DanetGuard
         });
         if (resolved) {
           // Scope the namespaced `appName:role` claims down to this app's bare roles.
-          identity = { source: resolved.source, roles: scopeRoles(resolved.roles, config.appName) };
+          identity = {
+            source: resolved.source,
+            roles: scopeRoles(resolved.roles, config.appName),
+          };
           config.logger.setSource(identity.source);
-          if (typeof ctx.set === "function") ctx.set(IDENTITY_CONTEXT_KEY, identity);
+          if (typeof ctx.set === "function") {
+            ctx.set(IDENTITY_CONTEXT_KEY, identity);
+          }
         } else if (!isPublic) {
           // Present but invalid on a protected route → reject (public routes ignore it).
           throw new UnauthorizedException();
@@ -230,7 +257,10 @@ export async function validateCredential(
     try {
       const claims = await opts.firebaseVerifier.verify(credential);
       // Fall back to a fixed label so attribution is never blank if a token lacks email and uid.
-      return { source: claims.email ?? claims.uid ?? "firebase-user", roles: claims.roles };
+      return {
+        source: claims.email ?? claims.uid ?? "firebase-user",
+        roles: claims.roles,
+      };
     } catch {
       // neither validated
     }
@@ -244,7 +274,9 @@ export const IDENTITY_CONTEXT_KEY = "danet:identity";
 /** Reads the caller {@link Identity} the guard attached to the context, if any. */
 // deno-lint-ignore no-explicit-any
 export function getIdentity(context: any): Identity | undefined {
-  return typeof context?.get === "function" ? context.get(IDENTITY_CONTEXT_KEY) : undefined;
+  return typeof context?.get === "function"
+    ? context.get(IDENTITY_CONTEXT_KEY)
+    : undefined;
 }
 
 /**

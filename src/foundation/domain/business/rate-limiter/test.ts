@@ -21,7 +21,10 @@ Deno.test("createLimiter - spaces starts by the configured rate", async () => {
   const limiter = createLimiter({ maxConcurrency: 1, requestsPerSecond: 100 });
   const started = Date.now();
   for (let i = 0; i < 5; i++) await limiter.run(() => Promise.resolve());
-  assert(Date.now() - started >= 35, `expected spacing, took ${Date.now() - started}ms`);
+  assert(
+    Date.now() - started >= 35,
+    `expected spacing, took ${Date.now() - started}ms`,
+  );
 });
 
 Deno.test("createLimiter - returns the fn result and releases on throw", async () => {

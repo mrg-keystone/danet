@@ -1,4 +1,4 @@
-import type { Type, FetchHandler, SwaggerDocEntry } from "@types";
+import type { FetchHandler, SwaggerDocEntry, Type } from "@types";
 import { Server } from "@foundation/domain/business/server/mod.ts";
 import { DanetHttpAdapter } from "@foundation/domain/data/http-adapter/mod.ts";
 import { createBackendClient } from "@foundation/domain/business/backend-client/mod.ts";
@@ -16,6 +16,12 @@ import {
   injectDocsScript,
   swaggerShellHtml,
 } from "@foundation/domain/business/docs-ui/mod.ts";
+// Static imports (no dynamic chunks): a lazily-imported chunk that shares modules with a
+// top-level-awaiting entry deadlocks under rollup-bundled output ("Top-level await promise
+// never resolved" in `deno serve _fresh/server.js`). The chain is bundler-clean since
+// handlebars was replaced with template literals, so eager loading is safe everywhere.
+import { SwaggerBuilder } from "@foundation/domain/business/swagger-builder/mod.ts";
+import { emulatorShellHtml } from "@foundation/domain/business/emulator-ui/mod.ts";
 
 interface BootstrapOptions {
   port?: number;
@@ -46,10 +52,16 @@ function warnOnce(message: string) {
 function configureLoggingFromEnv(appName: string) {
   const ddKey = Deno.env.get("DD_API_KEY");
   const datadog = ddKey
-    ? new DatadogTransport({ apiKey: ddKey, service: appName, site: DATADOG_SITE })
+    ? new DatadogTransport({
+      apiKey: ddKey,
+      service: appName,
+      site: DATADOG_SITE,
+    })
     : undefined;
   if (!datadog) {
-    warnOnce(`[${appName}] DD_API_KEY not set — Datadog disabled; logging to console only.`);
+    warnOnce(
+      `[${appName}] DD_API_KEY not set — Datadog disabled; logging to console only.`,
+    );
   }
 
   const pmToken = Deno.env.get("POSTMARK_SERVER_TOKEN");
@@ -125,7 +137,8 @@ export class BootstrapServer {
 
     // Localhost callers are trusted (no token) by default. Set TRUST_LOCALHOST=false to require
     // a token even from localhost — e.g. behind a same-host reverse proxy, or to test the gate.
-    const trustLocalhost = (Deno.env.get("TRUST_LOCALHOST") ?? "true").toLowerCase() !== "false";
+    const trustLocalhost =
+      (Deno.env.get("TRUST_LOCALHOST") ?? "true").toLowerCase() !== "false";
 
     const server = Server.create();
     server.registerModule(module);
@@ -138,32 +151,29 @@ export class BootstrapServer {
     // are deny-by-default; the framework's own direct routes (`/_mint`, `/docs`, docs `/json`)
     // aren't controllers, so they self-gate (mint localhost guard; docs json token check).
 
-    // Localhost-only token minting UI.
-    const mintUi = createMintUi({ appName, signingKey, logger: log });
+    // Localhost-only token minting UI. The docs link on the minted-token page only renders
+    // when docs are actually served.
+    const mintUi = createMintUi({
+      appName,
+      signingKey,
+      logger: log,
+      docsEnabled: Boolean(swagger),
+    });
     type RouteHandler = (...args: unknown[]) => unknown;
     adapter.registerRoute("get", "/_mint", mintUi.form as RouteHandler);
     adapter.registerRoute("post", "/_mint", mintUi.mint as RouteHandler);
 
     let docs: SwaggerDocEntry[] = [];
     if (swagger) {
-      // Lazy-load the Swagger builder only when docs are enabled. It pulls in `handlebars`
-      // (and `openapi3-ts`) — CommonJS modules that bundlers like Vite's SSR runner can't load.
-      // A static import would force them into EVERY consumer's module graph (even swagger:false),
-      // breaking the Fresh/Vite embedding. Behind this dynamic import they're never reached when
-      // docs are off.
-      const { SwaggerBuilder } = await import(
-        "@foundation/domain/business/swagger-builder/mod.ts"
-      );
-      const { emulatorShellHtml } = await import(
-        "@foundation/domain/business/emulator-ui/mod.ts"
-      );
       const filters = typeof swagger === "object" ? swagger.filters : [];
       const builder = new SwaggerBuilder(...filters);
       const { swaggerDocs, docsIndexHtml } = await builder.build(server);
       docs = swaggerDocs as unknown as SwaggerDocEntry[];
 
       const html = (body: string) =>
-        new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } });
+        new Response(body, {
+          headers: { "content-type": "text/html; charset=utf-8" },
+        });
 
       for (const { path, doc } of docs) {
         const moduleName = path.replace(/^\//, "");
@@ -176,7 +186,11 @@ export class BootstrapServer {
           () => html(injectDocsScript(emulatorShellHtml(moduleName, doc))),
         );
         // Standard Swagger UI for deeper inspection, moved under /swagger.
-        adapter.registerRoute("get", `/docs${path}/swagger`, () => html(swaggerShellHtml(title)));
+        adapter.registerRoute(
+          "get",
+          `/docs${path}/swagger`,
+          () => html(swaggerShellHtml(title)),
+        );
         // Gated spec: trusted origins (localhost / in-process) need no token; network callers
         // must present a valid signed/Firebase token (Authorization header or ?token).
         adapter.registerRoute(
@@ -192,7 +206,11 @@ export class BootstrapServer {
         );
       }
       // Public index: seeds the token from ?token into localStorage for the doc pages.
-      adapter.registerRoute("get", "/docs", () => html(injectDocsScript(docsIndexHtml)));
+      adapter.registerRoute(
+        "get",
+        "/docs",
+        () => html(injectDocsScript(docsIndexHtml)),
+      );
     }
 
     // Initialize eagerly so the in-process `backend` client is usable without listen().
@@ -209,7 +227,10 @@ export class BootstrapServer {
       trustLocalhost,
     });
     // deno-lint-ignore no-explicit-any
-    await (adapter.app as any).injector.registerInjectables([{ token: GLOBAL_GUARD, useValue: guard }]);
+    await (adapter.app as any).injector.registerInjectables([{
+      token: GLOBAL_GUARD,
+      useValue: guard,
+    }]);
 
     // The in-process client dispatches via the non-stripping handler so its trust marker is
     // honored; the public `handler` (and what integrators mount) strips it.

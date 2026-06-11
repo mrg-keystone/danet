@@ -29,7 +29,8 @@ export class Crawler {
   getModuleImports(module: Type) {
     // A non-@Module function has no "module" metadata (getMetadata → undefined); guard so
     // destructuring `{ imports }` can't throw.
-    const { imports } = (Reflect.getMetadata("module", module) ?? {}) as ModuleMetadata;
+    const { imports } =
+      (Reflect.getMetadata("module", module) ?? {}) as ModuleMetadata;
     const processed = imports?.filter(Boolean);
     return processed ?? [];
   }

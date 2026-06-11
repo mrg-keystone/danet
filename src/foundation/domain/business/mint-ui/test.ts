@@ -6,10 +6,15 @@ import { Logger } from "@foundation/domain/business/logger/mod.ts";
 
 const KEY = "mint-test-key";
 
-function app(signingKey = KEY) {
+function app(signingKey = KEY, docsEnabled?: boolean) {
   const logger = new Logger();
   logger.configure({ appName: "billing" });
-  const ui = createMintUi({ appName: "billing", signingKey, logger });
+  const ui = createMintUi({
+    appName: "billing",
+    signingKey,
+    logger,
+    docsEnabled,
+  });
   const hono = new Hono();
   hono.get("/_mint", ui.form);
   hono.post("/_mint", ui.mint);
@@ -56,7 +61,9 @@ Deno.test("POST mints a verifiable token", async () => {
   body.set("appName", "billing");
   body.set("expiresIn", "3600");
 
-  const res = await app()(new Request("http://localhost/_mint", { method: "POST", body }));
+  const res = await app()(
+    new Request("http://localhost/_mint", { method: "POST", body }),
+  );
   assertEquals(res.status, 200);
 
   const page = await res.text();
@@ -78,7 +85,9 @@ Deno.test("POST with 'never expires' mints a token with no expiry", async () => 
   body.set("neverExpires", "on");
   // expiresIn intentionally omitted (the field is disabled when 'never expires' is checked)
 
-  const res = await app()(new Request("http://localhost/_mint", { method: "POST", body }));
+  const res = await app()(
+    new Request("http://localhost/_mint", { method: "POST", body }),
+  );
   assertEquals(res.status, 200);
 
   const page = await res.text();
@@ -98,7 +107,9 @@ Deno.test("POST result page builds a copyable /docs?token= link", async () => {
   body.set("source", "ci-runner");
   body.set("expiresIn", "3600");
 
-  const res = await app()(new Request("http://localhost/_mint", { method: "POST", body }));
+  const res = await app()(
+    new Request("http://localhost/_mint", { method: "POST", body }),
+  );
   const page = await res.text();
 
   assertStringIncludes(page, 'replace("/_mint", "/docs")'); // derives docs path from location
@@ -107,12 +118,29 @@ Deno.test("POST result page builds a copyable /docs?token= link", async () => {
   assertStringIncludes(page, 'id="copyDocs"');
 });
 
+Deno.test("POST result page omits the docs link when docs are disabled", async () => {
+  const body = new FormData();
+  body.set("source", "ci-runner");
+  body.set("expiresIn", "3600");
+
+  const res = await app(KEY, false)(
+    new Request("http://localhost/_mint", { method: "POST", body }),
+  );
+  const page = await res.text();
+
+  assertEquals(page.includes('id="docsLink"'), false);
+  assertEquals(page.includes('id="copyDocs"'), false);
+  assertStringIncludes(page, 'id="token"'); // the token itself still renders
+});
+
 Deno.test("POST validates source and the duration", async () => {
   const bad = new FormData();
   bad.set("source", "");
   bad.set("expiresIn", "not-a-number");
   assertEquals(
-    (await app()(new Request("http://localhost/_mint", { method: "POST", body: bad }))).status,
+    (await app()(
+      new Request("http://localhost/_mint", { method: "POST", body: bad }),
+    )).status,
     400,
   );
 
@@ -120,7 +148,12 @@ Deno.test("POST validates source and the duration", async () => {
   nonPositive.set("source", "ci");
   nonPositive.set("expiresIn", "0");
   assertEquals(
-    (await app()(new Request("http://localhost/_mint", { method: "POST", body: nonPositive })))
+    (await app()(
+      new Request("http://localhost/_mint", {
+        method: "POST",
+        body: nonPositive,
+      }),
+    ))
       .status,
     400,
   );
@@ -139,7 +172,9 @@ Deno.test("result page auto-copies the token and shows expiry in Eastern Time", 
   const body = new FormData();
   body.set("source", "ci");
   body.set("expiresIn", "3600");
-  const res = await app()(new Request("http://localhost/_mint", { method: "POST", body }));
+  const res = await app()(
+    new Request("http://localhost/_mint", { method: "POST", body }),
+  );
   const page = await res.text();
   assertStringIncludes(page, "navigator.clipboard.writeText(token)"); // auto-copy
   assertStringIncludes(page, 'id="expiresAt"');
@@ -150,6 +185,8 @@ Deno.test("POST without a signing key fails closed", async () => {
   const body = new FormData();
   body.set("source", "ci");
   body.set("expiresIn", "3600");
-  const res = await app("")(new Request("http://localhost/_mint", { method: "POST", body }));
+  const res = await app("")(
+    new Request("http://localhost/_mint", { method: "POST", body }),
+  );
   assertEquals(res.status, 500);
 });

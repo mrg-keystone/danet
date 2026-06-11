@@ -58,7 +58,9 @@ async function ingressAttrs(req: Request): Promise<string> {
 }
 
 Deno.test("redacts the access_token query param", async () => {
-  const attrs = await ingressAttrs(new Request("http://app/x?access_token=SECRET&ok=1"));
+  const attrs = await ingressAttrs(
+    new Request("http://app/x?access_token=SECRET&ok=1"),
+  );
   assertStringIncludes(attrs, '"access_token":"***"');
   assertStringIncludes(attrs, '"ok":"1"');
   assertEquals(attrs.includes("SECRET"), false);
@@ -75,7 +77,9 @@ Deno.test("redacts credential headers (authorization, cookie, x-api-key, proxy-a
       },
     }),
   );
-  for (const k of ["authorization", "cookie", "x-api-key", "proxy-authorization"]) {
+  for (
+    const k of ["authorization", "cookie", "x-api-key", "proxy-authorization"]
+  ) {
     assertStringIncludes(attrs, `"${k}":"***"`);
   }
   for (const secret of ["SECRET-A", "SECRET-B", "SECRET-C", "SECRET-D"]) {

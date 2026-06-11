@@ -12,7 +12,10 @@
  */
 
 import type { OpenApiDocument } from "@types";
-import { endpointsFromDoc, type SpecEndpoint } from "@foundation/domain/business/endpoint-spec/mod.ts";
+import {
+  endpointsFromDoc,
+  type SpecEndpoint,
+} from "@foundation/domain/business/endpoint-spec/mod.ts";
 import { processOrder } from "@foundation/domain/business/process-graph/mod.ts";
 import { docsSeedScript } from "@foundation/domain/business/docs-ui/mod.ts";
 
@@ -25,8 +28,18 @@ export function orderedEndpoints(doc: OpenApiDocument): SpecEndpoint[] {
 }
 
 function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (ch) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]!));
+  return value.replace(
+    /[&<>"']/g,
+    (
+      ch,
+    ) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    }[ch]!),
+  );
 }
 
 /** Build the self-contained emulator HTML page for a module. */

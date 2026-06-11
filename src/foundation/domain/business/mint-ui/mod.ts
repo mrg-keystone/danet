@@ -1,5 +1,8 @@
 import type { Context } from "#hono";
-import { signToken, type TokenPayload } from "@foundation/domain/business/token/mod.ts";
+import {
+  signToken,
+  type TokenPayload,
+} from "@foundation/domain/business/token/mod.ts";
 import type { Logger } from "@foundation/domain/business/logger/mod.ts";
 
 /**
@@ -13,6 +16,8 @@ export interface MintUiConfig {
   /** The secret signing key, read from an env variable by the caller. Empty ⇒ minting disabled. */
   signingKey: string;
   logger: Logger;
+  /** Whether the app serves Swagger docs — when false the minted-token page omits the docs link. */
+  docsEnabled?: boolean;
 }
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
@@ -30,9 +35,12 @@ export function createMintUi(config: MintUiConfig): {
 /** Returns a 403 Response if the request is not from localhost; otherwise `undefined`. */
 function guard(c: Context): Response | undefined {
   if (isLocalRequest(c)) return undefined;
-  return new Response("Forbidden: the token minting UI is available on localhost only.", {
-    status: 403,
-  });
+  return new Response(
+    "Forbidden: the token minting UI is available on localhost only.",
+    {
+      status: 403,
+    },
+  );
 }
 
 /**
@@ -58,7 +66,12 @@ async function mint(c: Context, config: MintUiConfig): Promise<Response> {
   if (denied) return denied;
 
   if (!config.signingKey) {
-    return html(resultPage({ error: "No signing key configured (set the env variable)." }), 500);
+    return html(
+      resultPage({
+        error: "No signing key configured (set the env variable).",
+      }),
+      500,
+    );
   }
 
   const form = await c.req.formData();
@@ -75,7 +88,10 @@ async function mint(c: Context, config: MintUiConfig): Promise<Response> {
     const expiresIn = Number(form.get("expiresIn"));
     if (!Number.isInteger(expiresIn) || expiresIn <= 0) {
       return html(
-        resultPage({ error: "`expires in` must be a positive integer (seconds), or check “never expires”." }),
+        resultPage({
+          error:
+            "`expires in` must be a positive integer (seconds), or check “never expires”.",
+        }),
         400,
       );
     }
@@ -84,15 +100,25 @@ async function mint(c: Context, config: MintUiConfig): Promise<Response> {
   }
   try {
     const token = await signToken(payload, config.signingKey);
-    config.logger.info("Minted access token", { source, appName, expiry: payload.expiry ?? null });
-    return html(resultPage({ token, payload }));
+    config.logger.info("Minted access token", {
+      source,
+      appName,
+      expiry: payload.expiry ?? null,
+    });
+    return html(resultPage({ token, payload }, config.docsEnabled ?? true));
   } catch (err) {
-    return html(resultPage({ error: err instanceof Error ? err.message : String(err) }), 400);
+    return html(
+      resultPage({ error: err instanceof Error ? err.message : String(err) }),
+      400,
+    );
   }
 }
 
 function html(body: string, status = 200): Response {
-  return new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8" } });
+  return new Response(body, {
+    status,
+    headers: { "content-type": "text/html; charset=utf-8" },
+  });
 }
 
 // Default duration pre-filled in the form: 30 days, in seconds.
@@ -169,15 +195,24 @@ function expiryPreviewScript(): string {
 
 function resultPage(
   result: { token?: string; payload?: TokenPayload; error?: string },
+  docsEnabled = true,
 ): string {
   if (result.error) {
     return layout(
       "Mint failed",
-      `<h1>Mint failed</h1><p class="err">${escapeHtml(result.error)}</p><p><a href="">Back</a></p>`,
+      `<h1>Mint failed</h1><p class="err">${
+        escapeHtml(result.error)
+      }</p><p><a href="">Back</a></p>`,
     );
   }
   const token = result.token ?? "";
   const expiry = result.payload?.expiry; // undefined ⇒ never expires
+  const docsBlock = docsEnabled
+    ? `
+<label>Docs link <span class="hint">— opens the API docs with this token</span></label>
+<pre id="docsLink"></pre>
+<button type="button" id="copyDocs">Copy docs link</button>`
+    : "";
   return layout(
     "Token minted",
     `<h1>Token minted</h1>
@@ -187,10 +222,7 @@ function resultPage(
 
 <label>Token</label>
 <pre id="token">${escapeHtml(token)}</pre>
-
-<label>Docs link <span class="hint">— opens the API docs with this token</span></label>
-<pre id="docsLink"></pre>
-<button type="button" id="copyDocs">Copy docs link</button>
+${docsBlock}
 <button type="button" id="copyToken">Copy token</button>
 
 <p><a href="">Mint another</a></p>
@@ -215,11 +247,6 @@ function resultPageScript(token: string, expiry: number | undefined): string {
       }).format(new Date(expiry * 1000)) + " (Eastern)";
     } catch (e) { /* ignore */ }
   }
-  // Derive the docs URL from this page's own location so it works standalone (/_mint → /docs)
-  // and when mounted under Fresh (/api/_mint → /api/docs).
-  var base = window.location.pathname.replace("/_mint", "/docs");
-  var docsUrl = window.location.origin + base + "?token=" + encodeURIComponent(token);
-  document.getElementById("docsLink").textContent = docsUrl;
   function copier(id, text){
     var btn = document.getElementById(id);
     btn.addEventListener("click", function(){
@@ -229,7 +256,16 @@ function resultPageScript(token: string, expiry: number | undefined): string {
       });
     });
   }
-  copier("copyDocs", docsUrl);
+  // Derive the docs URL from this page's own location so it works standalone (/_mint → /docs)
+  // and when mounted under Fresh (/api/_mint → /api/docs). The docs block is omitted entirely
+  // when the app doesn't serve docs.
+  var docsLink = document.getElementById("docsLink");
+  if (docsLink) {
+    var base = window.location.pathname.replace("/_mint", "/docs");
+    var docsUrl = window.location.origin + base + "?token=" + encodeURIComponent(token);
+    docsLink.textContent = docsUrl;
+    copier("copyDocs", docsUrl);
+  }
   copier("copyToken", token);
   // Auto-copy the token on mint.
   var status = document.getElementById("copyStatus");
@@ -242,6 +278,16 @@ function resultPageScript(token: string, expiry: number | undefined): string {
 }
 
 function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (ch) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]!));
+  return value.replace(
+    /[&<>"']/g,
+    (
+      ch,
+    ) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    }[ch]!),
+  );
 }

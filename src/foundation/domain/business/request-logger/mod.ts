@@ -26,7 +26,9 @@ const UNSAFE_REQUEST_ID = /[^A-Za-z0-9._-]/g;
  * Builds the Hono middleware that opens a request scope and emits the ingress/egress logs.
  * Register it before any routes so it wraps every handler.
  */
-export function createRequestLoggingMiddleware(logger: Logger): MiddlewareHandler {
+export function createRequestLoggingMiddleware(
+  logger: Logger,
+): MiddlewareHandler {
   return (c, next) => {
     const requestId = resolveRequestId(c);
     c.header("x-request-id", requestId);
@@ -75,7 +77,10 @@ function resolveRequestId(c: Context): string {
  * Falls back to a generated id if nothing usable remains.
  */
 function sanitizeRequestId(value: string): string {
-  const cleaned = value.replace(UNSAFE_REQUEST_ID, "").slice(0, MAX_REQUEST_ID_LENGTH);
+  const cleaned = value.replace(UNSAFE_REQUEST_ID, "").slice(
+    0,
+    MAX_REQUEST_ID_LENGTH,
+  );
   return cleaned.length > 0 ? cleaned : crypto.randomUUID();
 }
 

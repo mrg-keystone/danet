@@ -90,6 +90,28 @@ try {
     headers: { "x-danet-internal": "anything" },
   });
 
+  // Swagger docs, embedded under the mount: shells are public, the spec is gated.
+  await check("/api/docs (public index shell)", "/api/docs", 200);
+  await check("/api/docs/app (emulator shell)", "/api/docs/app", 200);
+  await check(
+    "/api/docs/app/swagger (swagger shell)",
+    "/api/docs/app/swagger",
+    200,
+  );
+  await check("/api/docs/app/json (spec, no token)", "/api/docs/app/json", 401);
+  await check(
+    "/api/docs/app/json (spec, with token)",
+    `/api/docs/app/json?token=${token}`,
+    200,
+  );
+
+  // Index links must be mount-relative ("docs/app"); absolute "/docs/app" escapes /api.
+  const indexHtml = await (await fetch(`${BASE}/api/docs`)).text();
+  const relative = indexHtml.includes('href="docs/app"') &&
+    !indexHtml.includes('href="/docs/');
+  if (!relative) failed++;
+  console.log(`${relative ? "✓" : "✗"} docs index links are mount-relative`);
+
   console.log(failed ? `\n${failed} FAILED` : "\nALL PASS ✓");
 } finally {
   try {

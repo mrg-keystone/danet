@@ -1,4 +1,4 @@
-import type { Type, Cotr, HttpMethod, FetchHandler } from "@types";
+import type { Cotr, FetchHandler, HttpMethod, Type } from "@types";
 import { SwaggerModule } from "#danet/swagger";
 import { DanetApplication } from "#danet/core";
 import { INTERNAL_REQUEST_HEADER } from "@foundation/domain/business/backend-client/mod.ts";
@@ -56,7 +56,8 @@ export class DanetHttpAdapter extends HttpAdapter {
    */
   get inProcessHandler(): FetchHandler {
     const hono = this.app.router;
-    return (req: Request, info?: Deno.ServeHandlerInfo) => hono.fetch(req, info);
+    return (req: Request, info?: Deno.ServeHandlerInfo) =>
+      hono.fetch(req, info);
   }
 
   async listen(rootModule: Type) {
@@ -65,7 +66,10 @@ export class DanetHttpAdapter extends HttpAdapter {
     await this.app.listen(port);
   }
 
-  registerSwaggerDocument(atPath: string, document: Parameters<typeof SwaggerModule.setup>[2]) {
+  registerSwaggerDocument(
+    atPath: string,
+    document: Parameters<typeof SwaggerModule.setup>[2],
+  ) {
     SwaggerModule.setup(atPath, this.app, document);
   }
 
@@ -79,7 +83,8 @@ export class DanetHttpAdapter extends HttpAdapter {
     registerFn.call(this.app.router, path, handler);
   }
 
-  grabComponent = <T extends Cotr>(cotr: T): InstanceType<T> => this.app.get(cotr);
+  grabComponent = <T extends Cotr>(cotr: T): InstanceType<T> =>
+    this.app.get(cotr);
 
   async stop() {
     await this.app.close();

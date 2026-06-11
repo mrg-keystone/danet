@@ -95,7 +95,9 @@ Deno.test("busts by content-type alone (css/javascript/wasm) with no matching ex
   );
   const js = await run(
     "http://app/runtime",
-    new Response("0", { headers: { "content-type": "application/javascript" } }),
+    new Response("0", {
+      headers: { "content-type": "application/javascript" },
+    }),
   );
   const wasm = await run(
     "http://app/mod",
@@ -112,7 +114,11 @@ Deno.test("passes through a non-code path with no content-type (default branch)"
     new Response("data", { headers: { ETag: '"d"' } }), // no content-type, no code extension
   );
   assertEquals(out.headers.get(CACHE_CONTROL), null);
-  assertEquals(out.headers.get("ETag"), '"d"', "ETag preserved on pass-through");
+  assertEquals(
+    out.headers.get("ETag"),
+    '"d"',
+    "ETag preserved on pass-through",
+  );
   assert(!busted(out));
 });
 

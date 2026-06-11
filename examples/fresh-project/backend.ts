@@ -39,5 +39,5 @@ class HealthController {
 class AppModule {}
 
 export const api = await bootstrapServer("fresh-project", AppModule, {
-  swagger: false,
+  swagger: true,
 });

@@ -9,17 +9,57 @@ const doc: OpenApiDocument = {
     "/users": {
       post: {
         operationId: "create",
-        requestBody: { content: { "application/json": { schema: { $ref: "#/components/schemas/CreateUserDto" } } } },
-        responses: { "200": { content: { "application/json": { schema: { $ref: "#/components/schemas/UserDto" } } } } },
-        "x-keep-process": { order: 1, dependsOn: [], bind: {}, method: "post", path: "" },
+        requestBody: {
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/CreateUserDto" },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/UserDto" },
+              },
+            },
+          },
+        },
+        "x-keep-process": {
+          order: 1,
+          dependsOn: [],
+          bind: {},
+          method: "post",
+          path: "",
+        },
       },
     },
     "/users/fetch": {
       post: {
         operationId: "fetch",
-        requestBody: { content: { "application/json": { schema: { $ref: "#/components/schemas/UserRefDto" } } } },
-        responses: { "200": { content: { "application/json": { schema: { $ref: "#/components/schemas/UserDto" } } } } },
-        "x-keep-process": { order: 2, dependsOn: ["create"], bind: { id: "create.id" }, method: "post", path: "fetch" },
+        requestBody: {
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/UserRefDto" },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/UserDto" },
+              },
+            },
+          },
+        },
+        "x-keep-process": {
+          order: 2,
+          dependsOn: ["create"],
+          bind: { id: "create.id" },
+          method: "post",
+          path: "fetch",
+        },
       },
     },
   },
@@ -27,7 +67,9 @@ const doc: OpenApiDocument = {
     schemas: {
       CreateUserDto: { properties: { name: { type: "string" } } },
       UserRefDto: { properties: { id: { type: "string" } } },
-      UserDto: { properties: { id: { type: "string" }, name: { type: "string" } } },
+      UserDto: {
+        properties: { id: { type: "string" }, name: { type: "string" } },
+      },
     },
   },
 };

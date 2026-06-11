@@ -32,11 +32,16 @@ const HEADER = { alg: "HS256", typ: "JWT" } as const;
 const encoder = new TextEncoder();
 
 /** Signs `payload` with `key` (the secret signing key) and returns a compact JWT. */
-export async function signToken(payload: TokenPayload, key: string): Promise<string> {
+export async function signToken(
+  payload: TokenPayload,
+  key: string,
+): Promise<string> {
   assertKey(key);
   assertPayload(payload);
 
-  const signingInput = `${encodeSegment(HEADER)}.${encodeSegment(toClaims(payload))}`;
+  const signingInput = `${encodeSegment(HEADER)}.${
+    encodeSegment(toClaims(payload))
+  }`;
   const signature = await hmac(signingInput, key);
   return `${signingInput}.${base64UrlEncode(signature)}`;
 }
@@ -54,7 +59,9 @@ export async function verifyToken(
   assertKey(key);
 
   const parts = token.split(".");
-  if (parts.length !== 3) throw new TokenError("Malformed token: expected three segments.");
+  if (parts.length !== 3) {
+    throw new TokenError("Malformed token: expected three segments.");
+  }
   const [headerSeg, payloadSeg, signatureSeg] = parts;
 
   const expected = await hmac(`${headerSeg}.${payloadSeg}`, key);
@@ -65,12 +72,17 @@ export async function verifyToken(
 
   const claims = decodeSegment(payloadSeg);
   const payload = fromClaims(claims);
-  if (payload.expiry !== undefined && payload.expiry <= now) throw new TokenError("Token expired.");
+  if (payload.expiry !== undefined && payload.expiry <= now) {
+    throw new TokenError("Token expired.");
+  }
   return payload;
 }
 
 function toClaims(p: TokenPayload): Record<string, unknown> {
-  const claims: Record<string, unknown> = { source: p.source, appName: p.appName };
+  const claims: Record<string, unknown> = {
+    source: p.source,
+    appName: p.appName,
+  };
   if (typeof p.expiry === "number") claims.exp = p.expiry; // omitted ⇒ never expires
   if (p.roles && p.roles.length) claims.roles = p.roles;
   return claims;
@@ -86,7 +98,9 @@ function fromClaims(claims: Record<string, unknown>): TokenPayload {
   }
   const payload: TokenPayload = { source, appName };
   if (typeof exp === "number") payload.expiry = exp;
-  if (Array.isArray(roles)) payload.roles = roles.filter((r): r is string => typeof r === "string");
+  if (Array.isArray(roles)) {
+    payload.roles = roles.filter((r): r is string => typeof r === "string");
+  }
   return payload;
 }
 
@@ -143,7 +157,10 @@ function decodeSegment(segment: string): Record<string, unknown> {
 function base64UrlEncode(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(
+    /=+$/,
+    "",
+  );
 }
 
 function base64UrlDecode(segment: string): Uint8Array {

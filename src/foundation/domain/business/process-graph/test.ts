@@ -38,7 +38,10 @@ Deno.test("processOrder - reports a cycle and still returns all ids", () => {
   ]);
   assertEquals(cycles, [["a", "b"]]);
   assertEquals(order.length, 3);
-  assertEquals(order.includes("a") && order.includes("b") && order.includes("c"), true);
+  assertEquals(
+    order.includes("a") && order.includes("b") && order.includes("c"),
+    true,
+  );
 });
 
 Deno.test("processOrder - unknown dependsOn ids are ignored", () => {

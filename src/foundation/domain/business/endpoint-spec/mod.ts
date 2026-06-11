@@ -25,11 +25,16 @@ export interface SpecEndpoint {
 
 const HTTP_METHODS = ["get", "post", "put", "patch", "delete"] as const;
 
-function fieldsFromRef(doc: OpenApiDocument, ref: string | undefined): string[] {
+function fieldsFromRef(
+  doc: OpenApiDocument,
+  ref: string | undefined,
+): string[] {
   if (!ref) return [];
   const name = ref.split("/").pop();
   if (!name) return [];
-  const schema = doc.components?.schemas?.[name] as { properties?: Record<string, unknown> } | undefined;
+  const schema = doc.components?.schemas?.[name] as {
+    properties?: Record<string, unknown>;
+  } | undefined;
   return schema?.properties ? Object.keys(schema.properties) : [];
 }
 
@@ -41,7 +46,8 @@ export function endpointsFromDoc(doc: OpenApiDocument): SpecEndpoint[] {
       const op = item[method];
       if (!op?.operationId) continue;
       const process: ProcessExtension | undefined = op["x-keep-process"];
-      const reqRef = op.requestBody?.content?.["application/json"]?.schema?.$ref;
+      const reqRef = op.requestBody?.content?.["application/json"]?.schema
+        ?.$ref;
       const resRef = (op.responses?.["200"] as
         | { content?: Record<string, { schema?: { $ref?: string } }> }
         | undefined)?.content?.["application/json"]?.schema?.$ref;

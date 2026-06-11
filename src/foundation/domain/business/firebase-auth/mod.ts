@@ -57,8 +57,12 @@ export interface FirebaseVerifier {
 }
 
 /** Builds a Firebase ID token verifier for `projectId`. Caches signing keys across calls. */
-export function createFirebaseVerifier(opts: FirebaseVerifierOptions): FirebaseVerifier {
-  if (!opts.projectId) throw new FirebaseAuthError("A Firebase project ID is required.");
+export function createFirebaseVerifier(
+  opts: FirebaseVerifierOptions,
+): FirebaseVerifier {
+  if (!opts.projectId) {
+    throw new FirebaseAuthError("A Firebase project ID is required.");
+  }
   const issuer = `https://securetoken.google.com/${opts.projectId}`;
   const resolveKey = opts.resolveKey ??
     defaultResolveKey(opts.fetchCerts ?? (() => fetch(CERT_URL)));
@@ -73,7 +77,9 @@ export function createFirebaseVerifier(opts: FirebaseVerifierOptions): FirebaseV
             if (header.alg !== "RS256") {
               throw new FirebaseAuthError("Unexpected token algorithm.");
             }
-            if (!header.kid) throw new FirebaseAuthError("Token has no key id.");
+            if (!header.kid) {
+              throw new FirebaseAuthError("Token has no key id.");
+            }
             return resolveKey(header.kid);
           },
           { issuer, audience: opts.projectId },
@@ -100,14 +106,20 @@ function defaultResolveKey(
 ): (kid: string) => Promise<CryptoKey> {
   let cache: { keys: Record<string, string>; expiresAt: number } | undefined;
 
-  async function loadCerts(now: number, force: boolean): Promise<Record<string, string>> {
+  async function loadCerts(
+    now: number,
+    force: boolean,
+  ): Promise<Record<string, string>> {
     if (!force && cache && cache.expiresAt > now) return cache.keys;
     const res = await fetchCerts();
     if (!res.ok) {
-      throw new FirebaseAuthError(`Failed to fetch Firebase certificates (${res.status}).`);
+      throw new FirebaseAuthError(
+        `Failed to fetch Firebase certificates (${res.status}).`,
+      );
     }
     const keys = await res.json() as Record<string, string>;
-    const ttl = parseMaxAge(res.headers.get("cache-control")) ?? DEFAULT_CERT_TTL_SECONDS;
+    const ttl = parseMaxAge(res.headers.get("cache-control")) ??
+      DEFAULT_CERT_TTL_SECONDS;
     cache = { keys, expiresAt: now + ttl * 1000 };
     return keys;
   }

@@ -14,7 +14,16 @@
  */
 
 import "#reflect-metadata";
-import { Body, Controller, Delete, Get, Module, Patch, Post, Put } from "#danet/core";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Module,
+  Patch,
+  Post,
+  Put,
+} from "#danet/core";
 import { BodyType, Description, ReturnedType } from "#danet/swagger/decorators";
 import { SwaggerDescription } from "@foundation/domain/business/swagger-description/mod.ts";
 import type { Type } from "@types";
@@ -55,13 +64,14 @@ export interface ProcessMetadata {
   path: string;
 }
 
-const MAPPING: Record<EndpointMethod, (endpoint?: string) => MethodDecorator> = {
-  get: Get,
-  post: Post,
-  put: Put,
-  patch: Patch,
-  delete: Delete,
-};
+const MAPPING: Record<EndpointMethod, (endpoint?: string) => MethodDecorator> =
+  {
+    get: Get,
+    post: Post,
+    put: Put,
+    patch: Patch,
+    delete: Delete,
+  };
 
 /**
  * Decorate a controller handler to expose it as an HTTP endpoint with Swagger schemas + process
@@ -90,7 +100,9 @@ export function Endpoint(opts: EndpointOptions = {}): MethodDecorator {
     if (opts.output) ReturnedType(opts.output)(target, propertyKey, descriptor);
 
     // 4) operation description.
-    if (opts.description) Description(opts.description)(target, propertyKey, descriptor);
+    if (opts.description) {
+      Description(opts.description)(target, propertyKey, descriptor);
+    }
 
     // 5) process metadata for the emulator + headless runner.
     const dependsOn = opts.dependsOn == null
@@ -127,7 +139,9 @@ export function EndpointController(
   opts?: { description?: string },
 ): ClassDecorator {
   return (target) => {
-    Controller(surface)(target as unknown as Parameters<ReturnType<typeof Controller>>[0]);
+    Controller(surface)(
+      target as unknown as Parameters<ReturnType<typeof Controller>>[0],
+    );
     if (opts?.description) SwaggerDescription(opts.description)(target);
   };
 }

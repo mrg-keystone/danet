@@ -1,5 +1,4 @@
-import Handlebars from "#handlebars";
-import { swaggerIndexTemplate as page } from "./template.ts";
+import { renderSwaggerIndex } from "./template.ts";
 
 export interface IndexPageBuilderOptions {
   prefix?: string;
@@ -11,7 +10,6 @@ export interface IndexPageBuilderOptions {
  * Takes a list of names and creates links to <prefix><name> pages.
  */
 export class IndexPageBuilder {
-  private template = Handlebars.compile(page);
   private prefix: string;
   private particleCount: number;
 
@@ -42,7 +40,6 @@ export class IndexPageBuilder {
       // Use deterministic pseudo-random values based on index
       const seed = (i * 7919) % 100; // Prime number for distribution
       return {
-        index: i + 1,
         left: Math.round(seed),
         delay: ((i * 1.7) % 15).toFixed(1),
         duration: (10 + (seed % 15)).toFixed(0),
@@ -51,10 +48,9 @@ export class IndexPageBuilder {
       };
     });
 
-    return this.template({
+    return renderSwaggerIndex({
       title: "API Documentation",
       links,
-      hasLinks: links.length > 0,
       particles,
     });
   }

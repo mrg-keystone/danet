@@ -22,7 +22,10 @@ Deno.test("PostmarkAlerter - posts an email with the server token and fields", a
   await alerter.alert("Subject line", "Body text");
 
   assertEquals(calls[0].url, "https://api.postmarkapp.com/email");
-  assertEquals(new Headers(calls[0].init?.headers).get("X-Postmark-Server-Token"), "TOK");
+  assertEquals(
+    new Headers(calls[0].init?.headers).get("X-Postmark-Server-Token"),
+    "TOK",
+  );
   const body = JSON.parse(calls[0].init?.body as string);
   assertEquals(body.From, "alerts@app.com");
   assertEquals(body.To, "oncall@app.com");
@@ -63,7 +66,12 @@ Deno.test("PostmarkAlerter - throttles within the cooldown window", async () => 
 
 Deno.test("PostmarkAlerter - swallows transport errors", async () => {
   const fn = (() => Promise.reject(new Error("boom"))) as typeof fetch;
-  const alerter = new PostmarkAlerter({ serverToken: "T", from: "a", to: "b", transport: fn });
+  const alerter = new PostmarkAlerter({
+    serverToken: "T",
+    from: "a",
+    to: "b",
+    transport: fn,
+  });
 
   await alerter.alert("s", "b"); // must not throw
 });

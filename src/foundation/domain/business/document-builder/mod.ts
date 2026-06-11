@@ -1,4 +1,4 @@
-import { SwaggerModule, SpecBuilder } from "#danet/swagger";
+import { SpecBuilder, SwaggerModule } from "#danet/swagger";
 import "#reflect-metadata";
 import { Type } from "@types";
 import { DanetApplication, Module } from "#danet/core";
@@ -17,7 +17,10 @@ const HTTP_METHODS = ["get", "post", "put", "patch", "delete"] as const;
  * headless runner read to order and chain the endpoints — so it travels with the spec, single
  * source of truth. Modules with no `@Endpoint` handlers are left untouched.
  */
-function attachProcessMetadata(doc: { paths?: Record<string, Record<string, unknown>> }, mod: Type): void {
+function attachProcessMetadata(
+  doc: { paths?: Record<string, Record<string, unknown>> },
+  mod: Type,
+): void {
   const meta = Reflect.getMetadata("module", mod) ?? {};
   const controllers: Type[] = meta.controllers ?? [];
   const byOperationId = new Map<string, ProcessMetadata>();
@@ -41,7 +44,8 @@ function attachProcessMetadata(doc: { paths?: Record<string, Record<string, unkn
 }
 
 // Type-only helper: the shape returned by SpecBuilder.build(), used to type Spec.value.
-const emptySpec = (): ReturnType<SpecBuilder["build"]> => new SpecBuilder().build();
+const emptySpec = (): ReturnType<SpecBuilder["build"]> =>
+  new SpecBuilder().build();
 type Document = Awaited<ReturnType<typeof SwaggerModule.createDocument>>;
 
 class Spec {
@@ -57,8 +61,8 @@ class Spec {
 export class DanetDocumentBuilder {
   createSpec(target: Type, description?: string, version = "1.0"): Spec {
     const name = Spec.getCleanName(target.name);
-    const desc =
-      description ?? getSwaggerDescription(target) ?? "Auto-generated docs";
+    const desc = description ?? getSwaggerDescription(target) ??
+      "Auto-generated docs";
     const value = new SpecBuilder()
       .setTitle(name)
       .setDescription(desc)
@@ -95,12 +99,17 @@ export class DanetDocumentBuilder {
     }
   }
 
-  normalizePath = (path: string): string => (path.startsWith("/") ? path : `/${path}`);
+  normalizePath = (
+    path: string,
+  ): string => (path.startsWith("/") ? path : `/${path}`);
 
   async createDocument(spec: Spec): Promise<{ doc: Document; path: string }> {
     const swaggerModuleHost = await this.setupFacade(spec.module);
     const rawPath = `/${Spec.getCleanName(spec.module.name).toLowerCase()}`;
-    const doc = await SwaggerModule.createDocument(swaggerModuleHost, spec.value);
+    const doc = await SwaggerModule.createDocument(
+      swaggerModuleHost,
+      spec.value,
+    );
     attachProcessMetadata(
       doc as unknown as { paths?: Record<string, Record<string, unknown>> },
       spec.module,
@@ -113,7 +122,8 @@ export class DanetDocumentBuilder {
 
   package(doc: Document, prefix: string): { doc: Document; path: string } {
     const normalizedPrefix = this.normalizePath(prefix);
-    const path = `${normalizedPrefix.toLowerCase()}/${doc.info.title.toLowerCase()}`;
+    const path =
+      `${normalizedPrefix.toLowerCase()}/${doc.info.title.toLowerCase()}`;
     return { doc, path };
   }
 }

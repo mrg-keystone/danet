@@ -1,5 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { DatadogEntry, DatadogTransport } from "@foundation/domain/data/datadog/mod.ts";
+import type {
+  DatadogEntry,
+  DatadogTransport,
+} from "@foundation/domain/data/datadog/mod.ts";
 import type { PostmarkAlerter } from "@foundation/domain/data/postmark/mod.ts";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
@@ -107,7 +110,9 @@ export class Logger {
 
   private emit(level: LogLevel, msg: string, data?: Record<string, unknown>) {
     const ctx = this.currentRequest();
-    const prefix = ctx ? `[${this.appName} ${ctx.requestId}]` : `[${this.appName}]`;
+    const prefix = ctx
+      ? `[${this.appName} ${ctx.requestId}]`
+      : `[${this.appName}]`;
     const attrs: Record<string, unknown> = { ...data };
     if (ctx) {
       attrs.requestId = ctx.requestId;
@@ -116,7 +121,11 @@ export class Logger {
     this.write(level, `${prefix} ${msg}`, attrs);
   }
 
-  private write(level: LogLevel, message: string, attrs: Record<string, unknown>) {
+  private write(
+    level: LogLevel,
+    message: string,
+    attrs: Record<string, unknown>,
+  ) {
     try {
       this.writeConsole(level, message, attrs);
     } catch {
@@ -171,7 +180,9 @@ export class Logger {
 
   private async alertFailure(err: unknown, entry: DatadogEntry): Promise<void> {
     try {
-      const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+      const detail = err instanceof Error
+        ? (err.stack ?? err.message)
+        : String(err);
       await this.alerter?.alert(
         `[${this.appName}] Logger delivery failure`,
         `The logger failed to deliver a log to Datadog.\n\n` +
@@ -184,8 +195,14 @@ export class Logger {
     }
   }
 
-  private writeConsole(level: LogLevel, message: string, attrs: Record<string, unknown>) {
-    const args: unknown[] = Object.keys(attrs).length > 0 ? [message, attrs] : [message];
+  private writeConsole(
+    level: LogLevel,
+    message: string,
+    attrs: Record<string, unknown>,
+  ) {
+    const args: unknown[] = Object.keys(attrs).length > 0
+      ? [message, attrs]
+      : [message];
     switch (level) {
       case "debug":
         console.debug(...args);

@@ -23,12 +23,14 @@ export class SwaggerSetup {
     adapter.registerRoute("get", "/docs", () =>
       new Response(docsIndexHtml, {
         headers: { "Content-Type": "text/html" },
-      })
-    );
+      }));
     return adapter;
   }
 }
 
-export async function setupWithSwagger(server: Server, ...filters: string[]): Promise<DanetHttpAdapter> {
+export async function setupWithSwagger(
+  server: Server,
+  ...filters: string[]
+): Promise<DanetHttpAdapter> {
   return new SwaggerSetup(...filters).setup(server);
 }

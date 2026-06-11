@@ -41,8 +41,12 @@ export function Public(): any {
 /** Reads whether the current execution context's handler or controller is `@Public`. */
 // deno-lint-ignore no-explicit-any
 export function isPublicContext(context: any): boolean {
-  const handler = typeof context?.getHandler === "function" ? context.getHandler() : undefined;
-  const cls = typeof context?.getClass === "function" ? context.getClass() : undefined;
+  const handler = typeof context?.getHandler === "function"
+    ? context.getHandler()
+    : undefined;
+  const cls = typeof context?.getClass === "function"
+    ? context.getClass()
+    : undefined;
   return Boolean(
     (handler && Reflect.getMetadata(PUBLIC_METADATA_KEY, handler)) ||
       (cls && Reflect.getMetadata(PUBLIC_METADATA_KEY, cls)),

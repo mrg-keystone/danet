@@ -51,7 +51,8 @@ class HttpController {
 const EmuModule = endpointModule("Emu", [HttpController]);
 
 Deno.test({
-  name: "emulator — progressive unlock + autofill + checkmarks (headless chromium)",
+  name:
+    "emulator — progressive unlock + autofill + checkmarks (headless chromium)",
   ignore: !enabled,
   sanitizeResources: false,
   sanitizeOps: false,
@@ -74,8 +75,12 @@ Deno.test({
       await emulateButtons.nth(0).click();
       await page.locator("li .dot.ok").first().waitFor();
       assertEquals(await emulateButtons.nth(1).isDisabled(), false);
-      const step2Body = await page.locator("li").nth(1).locator("textarea").inputValue();
-      assert(step2Body.includes("thing-7"), `step 2 body not autofilled: ${step2Body}`);
+      const step2Body = await page.locator("li").nth(1).locator("textarea")
+        .inputValue();
+      assert(
+        step2Body.includes("thing-7"),
+        `step 2 body not autofilled: ${step2Body}`,
+      );
 
       // Run all → both steps green.
       await page.locator("#runall").click();

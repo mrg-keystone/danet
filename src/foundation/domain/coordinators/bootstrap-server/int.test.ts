@@ -80,12 +80,20 @@ Deno.test("global guard: deny-by-default for controllers, @Public exempts", asyn
   Deno.env.set("MANUAL_KEY", "guard-test-key");
   try {
     const port = portCounter++;
-    const server = await bootstrapServer("test-app", GuardModule, { port, swagger: false });
+    const server = await bootstrapServer("test-app", GuardModule, {
+      port,
+      swagger: false,
+    });
 
-    const remote = { remoteAddr: { transport: "tcp", hostname: "203.0.113.5", port: 1 } };
-    const loopback = { remoteAddr: { transport: "tcp", hostname: "127.0.0.1", port: 1 } };
+    const remote = {
+      remoteAddr: { transport: "tcp", hostname: "203.0.113.5", port: 1 },
+    };
+    const loopback = {
+      remoteAddr: { transport: "tcp", hostname: "127.0.0.1", port: 1 },
+    };
     // deno-lint-ignore no-explicit-any
-    const net = (path: string, init?: RequestInit) => server.handler(new Request(`http://app${path}`, init), remote as any);
+    const net = (path: string, init?: RequestInit) =>
+      server.handler(new Request(`http://app${path}`, init), remote as any);
 
     // Protected controller: network caller without a credential → 401.
     assertEquals((await net("/secret")).status, 401);
@@ -100,13 +108,18 @@ Deno.test("global guard: deny-by-default for controllers, @Public exempts", asyn
       { source: "svc", appName: "test-app", expiry: 4_102_444_800 },
       "guard-test-key",
     );
-    const ok = await net("/secret", { headers: { authorization: `Bearer ${token}` } });
+    const ok = await net("/secret", {
+      headers: { authorization: `Bearer ${token}` },
+    });
     assertEquals(ok.status, 200);
     assertEquals((await ok.json()).secret, true);
 
     // Localhost is trusted → no credential needed.
     // deno-lint-ignore no-explicit-any
-    const local = await server.handler(new Request("http://app/secret"), loopback as any);
+    const local = await server.handler(
+      new Request("http://app/secret"),
+      loopback as any,
+    );
     assertEquals(local.status, 200);
   } finally {
     Deno.env.delete("MANUAL_KEY");
@@ -117,12 +130,19 @@ Deno.test("a forged in-process header on a network request cannot bypass auth (s
   Deno.env.set("MANUAL_KEY", "strip-test-key");
   try {
     const port = portCounter++;
-    const server = await bootstrapServer("test-app", GuardModule, { port, swagger: false });
-    const remote = { remoteAddr: { transport: "tcp", hostname: "203.0.113.5", port: 1 } };
+    const server = await bootstrapServer("test-app", GuardModule, {
+      port,
+      swagger: false,
+    });
+    const remote = {
+      remoteAddr: { transport: "tcp", hostname: "203.0.113.5", port: 1 },
+    };
 
     // Attacker (or a mis-mounted proxy) sends the in-process trust header over the network.
     const res = await server.handler(
-      new Request("http://app/secret", { headers: { [INTERNAL_REQUEST_HEADER]: "anything" } }),
+      new Request("http://app/secret", {
+        headers: { [INTERNAL_REQUEST_HEADER]: "anything" },
+      }),
       // deno-lint-ignore no-explicit-any
       remote as any,
     );
@@ -139,8 +159,12 @@ Deno.test("mounted handler: /_mint reachable from localhost when conn info is fo
 
   // Reporter's topology: another listener dispatches through the returned handler.
   // Forwarding `info` (as Deno.serve provides it) keeps loopback detection working.
-  const loopback = { remoteAddr: { transport: "tcp", hostname: "127.0.0.1", port: 1 } };
-  const remote = { remoteAddr: { transport: "tcp", hostname: "203.0.113.5", port: 1 } };
+  const loopback = {
+    remoteAddr: { transport: "tcp", hostname: "127.0.0.1", port: 1 },
+  };
+  const remote = {
+    remoteAddr: { transport: "tcp", hostname: "203.0.113.5", port: 1 },
+  };
   const mintReq = () => new Request("http://app/_mint");
 
   // deno-lint-ignore no-explicit-any
@@ -160,7 +184,8 @@ Deno.test("docs: shell is public, spec /json is token-gated (seeded via ?token)"
     const port = portCounter++;
     const server = await bootstrapServer("test-app", AppModule, { port });
     // `handler` carries no conn info / internal key, so it is treated as a network caller.
-    const call = (path: string) => server.handler(new Request(`http://app${path}`));
+    const call = (path: string) =>
+      server.handler(new Request(`http://app${path}`));
 
     // The process emulator (default docs page) loads without a token.
     const emulator = await call("/docs/app");
@@ -190,7 +215,10 @@ Deno.test("docs: shell is public, spec /json is token-gated (seeded via ?token)"
 
 Deno.test("bootstrapServer - allows disabling swagger", async () => {
   const port = portCounter++;
-  const server = await bootstrapServer("test-app", AppModule, { port, swagger: false });
+  const server = await bootstrapServer("test-app", AppModule, {
+    port,
+    swagger: false,
+  });
   await server.listen();
 
   const response = await fetch(`http://localhost:${port}/docs`);

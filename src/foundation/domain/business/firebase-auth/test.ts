@@ -21,19 +21,30 @@ function token(opts: {
   // deno-lint-ignore no-explicit-any
   claims?: Record<string, any>;
 } = {}) {
-  let jwt = new SignJWT({ ...(opts.email ? { email: opts.email } : {}), ...(opts.claims ?? {}) })
+  let jwt = new SignJWT({
+    ...(opts.email ? { email: opts.email } : {}),
+    ...(opts.claims ?? {}),
+  })
     .setProtectedHeader({ alg: "RS256", kid: "test-kid" })
     .setIssuer(opts.iss ?? ISSUER)
     .setAudience(opts.aud ?? PROJECT)
     .setSubject(opts.sub ?? "uid-123")
     .setIssuedAt();
-  jwt = opts.expired ? jwt.setExpirationTime("-1h") : jwt.setExpirationTime("1h");
+  jwt = opts.expired
+    ? jwt.setExpirationTime("-1h")
+    : jwt.setExpirationTime("1h");
   return jwt.sign(privateKey);
 }
 
 Deno.test("verifies a valid token and returns uid + email", async () => {
-  const claims = await verifier().verify(await token({ email: "user@example.com" }));
-  assertEquals(claims, { uid: "uid-123", email: "user@example.com", roles: [] });
+  const claims = await verifier().verify(
+    await token({ email: "user@example.com" }),
+  );
+  assertEquals(claims, {
+    uid: "uid-123",
+    email: "user@example.com",
+    roles: [],
+  });
 });
 
 Deno.test("verifies a token without an email", async () => {
@@ -42,10 +53,14 @@ Deno.test("verifies a token without an email", async () => {
 });
 
 Deno.test("extracts roles from the `roles` array and singular `role` custom claims", async () => {
-  const arr = await verifier().verify(await token({ claims: { roles: ["admin", "editor"] } }));
+  const arr = await verifier().verify(
+    await token({ claims: { roles: ["admin", "editor"] } }),
+  );
   assertEquals(arr.roles, ["admin", "editor"]);
 
-  const single = await verifier().verify(await token({ claims: { role: "billing" } }));
+  const single = await verifier().verify(
+    await token({ claims: { role: "billing" } }),
+  );
   assertEquals(single.roles, ["billing"]);
 });
 
@@ -83,5 +98,9 @@ Deno.test("rejects a malformed token", async () => {
 });
 
 Deno.test("createFirebaseVerifier requires a project id", () => {
-  assertThrows(() => createFirebaseVerifier({ projectId: "" }), FirebaseAuthError, "project ID");
+  assertThrows(
+    () => createFirebaseVerifier({ projectId: "" }),
+    FirebaseAuthError,
+    "project ID",
+  );
 });

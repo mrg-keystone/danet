@@ -38,8 +38,12 @@ export function Roles(...roles: string[]): any {
  */
 // deno-lint-ignore no-explicit-any
 export function requiredRoles(context: any): string[] {
-  const handler = typeof context?.getHandler === "function" ? context.getHandler() : undefined;
-  const cls = typeof context?.getClass === "function" ? context.getClass() : undefined;
+  const handler = typeof context?.getHandler === "function"
+    ? context.getHandler()
+    : undefined;
+  const cls = typeof context?.getClass === "function"
+    ? context.getClass()
+    : undefined;
   const onMethod = handler && Reflect.getMetadata(ROLES_METADATA_KEY, handler);
   if (Array.isArray(onMethod)) return onMethod;
   const onClass = cls && Reflect.getMetadata(ROLES_METADATA_KEY, cls);

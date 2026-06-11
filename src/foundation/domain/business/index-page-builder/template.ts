@@ -1,9 +1,74 @@
-export const swaggerIndexTemplate = `<!DOCTYPE html>
+/** Data consumed by {@linkcode renderSwaggerIndex}. */
+export interface SwaggerIndexData {
+  title: string;
+  links: Array<{ name: string; href: string }>;
+  particles: Array<{
+    left: number;
+    delay: string;
+    duration: string;
+    size: string;
+    opacity: string;
+  }>;
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(
+    /[&<>"']/g,
+    (
+      ch,
+    ) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    }[ch]!),
+  );
+}
+
+const DOC_ICON_SVG =
+  `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                      d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zM8 17h8v-2H8v2zm0-4h8v-2H8v2z"
+                    />
+                  </svg>`;
+
+/**
+ * Renders the swagger docs index page. Plain template literals — no template engine, so the
+ * module stays loadable under bundlers (Vite SSR) that choke on CommonJS like handlebars.
+ */
+export function renderSwaggerIndex(data: SwaggerIndexData): string {
+  const particles = data.particles
+    .map(
+      (p) =>
+        `<div
+          class="particle"
+          style="left: ${p.left}%; animation-delay: ${p.delay}s; animation-duration: ${p.duration}s; width: ${p.size}px; height: ${p.size}px; opacity: ${p.opacity};"
+        ></div>`,
+    )
+    .join("\n        ");
+
+  const docsList = data.links.length > 0
+    ? data.links
+      .map(
+        (link) =>
+          `<a href="${escapeHtml(link.href)}" class="doc-link">
+                <span class="icon">
+                  ${DOC_ICON_SVG}
+                </span>
+                <span>${escapeHtml(link.name)}</span>
+                <span class="arrow">→</span>
+              </a>`,
+      )
+      .join("\n              ")
+    : `<p class="no-docs">No documentation available yet</p>`;
+
+  return `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{{title}}</title>
+    <title>${escapeHtml(data.title)}</title>
     <link
       href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap"
       rel="stylesheet"
@@ -343,12 +408,7 @@ export const swaggerIndexTemplate = `<!DOCTYPE html>
   </head>
   <body>
     <div class="bg-particles">
-      {{#each particles}}
-        <div
-          class="particle"
-          style="left: {{left}}%; animation-delay: {{delay}}s; animation-duration: {{duration}}s; width: {{size}}px; height: {{size}}px; opacity: {{opacity}};"
-        ></div>
-      {{/each}}
+      ${particles}
     </div>
 
     <div class="content-wrapper">
@@ -359,28 +419,12 @@ export const swaggerIndexTemplate = `<!DOCTYPE html>
 
       <div class="container">
         <div class="title-wrapper">
-          <h1>{{title}}</h1>
+          <h1>${escapeHtml(data.title)}</h1>
           <p class="subtitle">Select a module to explore its endpoints</p>
         </div>
 
         <div class="docs-list">
-          {{#if hasLinks}}
-            {{#each links}}
-              <a href="{{href}}" class="doc-link">
-                <span class="icon">
-                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path
-                      d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zM8 17h8v-2H8v2zm0-4h8v-2H8v2z"
-                    />
-                  </svg>
-                </span>
-                <span>{{name}}</span>
-                <span class="arrow">→</span>
-              </a>
-            {{/each}}
-          {{else}}
-            <p class="no-docs">No documentation available yet</p>
-          {{/if}}
+          ${docsList}
         </div>
       </div>
 
@@ -392,3 +436,4 @@ export const swaggerIndexTemplate = `<!DOCTYPE html>
   </body>
 </html>
 `;
+}

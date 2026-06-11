@@ -58,7 +58,9 @@ export class DatadogTransport {
       }]),
     });
     if (!res.ok) {
-      throw new Error(`Datadog logs intake returned ${res.status} ${res.statusText}`);
+      throw new Error(
+        `Datadog logs intake returned ${res.status} ${res.statusText}`,
+      );
     }
   }
 }

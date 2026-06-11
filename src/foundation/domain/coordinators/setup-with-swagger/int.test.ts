@@ -30,9 +30,10 @@ Deno.test(
 
     assertStringIncludes(docsIndexHtml, "<html");
     assertStringIncludes(docsIndexHtml, "Test");
-    assertStringIncludes(docsIndexHtml, 'href="/docs/test"');
+    // Mount-relative so the index works at "/docs" standalone and "/api/docs" under Fresh.
+    assertStringIncludes(docsIndexHtml, 'href="docs/test"');
     // Imported modules get an index card too, not just a /docs/<name> page.
-    assertStringIncludes(docsIndexHtml, 'href="/docs/child"');
+    assertStringIncludes(docsIndexHtml, 'href="docs/child"');
   },
 );
 

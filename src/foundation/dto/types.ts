@@ -53,7 +53,9 @@ export interface SwaggerDocEntry {
   doc: OpenApiDocument;
 }
 
-export const HttpMethodSchema: z.ZodEnum<["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]> = z.enum([
+export const HttpMethodSchema: z.ZodEnum<
+  ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]
+> = z.enum([
   "GET",
   "POST",
   "PUT",

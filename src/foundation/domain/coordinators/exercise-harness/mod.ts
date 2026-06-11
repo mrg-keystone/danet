@@ -12,9 +12,15 @@
 
 import type { BackendClient } from "@foundation/domain/business/backend-client/mod.ts";
 import type { SwaggerDocEntry } from "@types";
-import { endpointsFromDoc, type SpecEndpoint } from "@foundation/domain/business/endpoint-spec/mod.ts";
+import {
+  endpointsFromDoc,
+  type SpecEndpoint,
+} from "@foundation/domain/business/endpoint-spec/mod.ts";
 import { processOrder } from "@foundation/domain/business/process-graph/mod.ts";
-import { createLimiter, type RateLimitOptions } from "@foundation/domain/business/rate-limiter/mod.ts";
+import {
+  createLimiter,
+  type RateLimitOptions,
+} from "@foundation/domain/business/rate-limiter/mod.ts";
 import { signToken } from "@foundation/domain/business/token/mod.ts";
 
 /** The relevant slice of a `bootstrapServer(...)` return. */
@@ -26,7 +32,13 @@ export interface ExerciseTarget {
 export type ExerciseAuth =
   | { kind: "in-process" }
   | { kind: "token"; token: string }
-  | { kind: "mint"; signingKey: string; source: string; appName: string; roles?: string[] };
+  | {
+    kind: "mint";
+    signingKey: string;
+    source: string;
+    appName: string;
+    roles?: string[];
+  };
 
 export interface SeedOverrides {
   /** Literal values injected into any endpoint's request by field name. */
@@ -70,7 +82,11 @@ interface CallResult {
   error?: string;
 }
 
-type Transport = (method: string, path: string, body: unknown) => Promise<CallResult>;
+type Transport = (
+  method: string,
+  path: string,
+  body: unknown,
+) => Promise<CallResult>;
 
 /** Assemble an endpoint's request values from seeds → bind (captured outputs) → per-endpoint overrides. */
 function buildValues(
@@ -80,7 +96,9 @@ function buildValues(
 ): Record<string, unknown> {
   const values: Record<string, unknown> = {};
   for (const field of ep.inputFields) {
-    if (overrides.seeds && field in overrides.seeds) values[field] = overrides.seeds[field];
+    if (overrides.seeds && field in overrides.seeds) {
+      values[field] = overrides.seeds[field];
+    }
   }
   for (const [field, ref] of Object.entries(ep.bind)) {
     const [depId, outField] = ref.split(".");
@@ -93,11 +111,16 @@ function buildValues(
 
 /** Substitute `{name}` path params from the assembled values. */
 function resolvePath(path: string, values: Record<string, unknown>): string {
-  return path.replace(/\{([^}]+)\}/g, (_m, name) =>
-    name in values ? encodeURIComponent(String(values[name])) : `{${name}}`);
+  return path.replace(
+    /\{([^}]+)\}/g,
+    (_m, name) =>
+      name in values ? encodeURIComponent(String(values[name])) : `{${name}}`,
+  );
 }
 
-async function buildTransport(opts: ExerciseOptions): Promise<{ transport: Transport; dispose: () => Promise<void> }> {
+async function buildTransport(
+  opts: ExerciseOptions,
+): Promise<{ transport: Transport; dispose: () => Promise<void> }> {
   const auth = opts.overrides?.auth ?? { kind: "in-process" };
   const headers: Record<string, string> = {};
   if (auth.kind === "token") headers.authorization = `Bearer ${auth.token}`;
@@ -110,14 +133,26 @@ async function buildTransport(opts: ExerciseOptions): Promise<{ transport: Trans
   }
 
   if (opts.baseUrl) {
-    const { request } = await import("#playwright");
-    const ctx = await request.newContext({ baseURL: opts.baseUrl, extraHTTPHeaders: headers });
+    // The specifier is a variable so bundlers can't follow it into playwright-core (whose
+    // internal requires rollup can't resolve, which broke `vite build` for every consumer).
+    // It only executes for baseUrl runs, which never happen inside a bundled Fresh app; the
+    // cast keeps full typing and erases at emit.
+    const playwrightSpecifier = "#playwright";
+    const { request } = await import(
+      /* @vite-ignore */ playwrightSpecifier
+    ) as typeof import("#playwright");
+    const ctx = await request.newContext({
+      baseURL: opts.baseUrl,
+      extraHTTPHeaders: headers,
+    });
     const transport: Transport = async (method, path, body) => {
       try {
         const res = await ctx.fetch(path, {
           method,
           data: method === "GET" ? undefined : (body ?? {}),
-          headers: method === "GET" ? undefined : { "content-type": "application/json" },
+          headers: method === "GET"
+            ? undefined
+            : { "content-type": "application/json" },
         });
         const text = await res.text();
         let parsed: unknown;
@@ -128,7 +163,11 @@ async function buildTransport(opts: ExerciseOptions): Promise<{ transport: Trans
         }
         return { status: res.status(), body: parsed };
       } catch (err) {
-        return { status: 0, body: null, error: err instanceof Error ? err.message : String(err) };
+        return {
+          status: 0,
+          body: null,
+          error: err instanceof Error ? err.message : String(err),
+        };
       }
     };
     return { transport, dispose: () => ctx.dispose() };
@@ -138,7 +177,8 @@ async function buildTransport(opts: ExerciseOptions): Promise<{ transport: Trans
     try {
       const init: RequestInit = { method, headers: { ...headers } };
       if (method !== "GET") {
-        (init.headers as Record<string, string>)["content-type"] = "application/json";
+        (init.headers as Record<string, string>)["content-type"] =
+          "application/json";
         init.body = JSON.stringify(body ?? {});
       }
       const res = await opts.api.backend.fetch(path, init);
@@ -151,14 +191,20 @@ async function buildTransport(opts: ExerciseOptions): Promise<{ transport: Trans
       }
       return { status: res.status, body: parsed };
     } catch (err) {
-      return { status: 0, body: null, error: err instanceof Error ? err.message : String(err) };
+      return {
+        status: 0,
+        body: null,
+        error: err instanceof Error ? err.message : String(err),
+      };
     }
   };
   return { transport, dispose: () => Promise.resolve() };
 }
 
 /** Discover, order, and exercise every endpoint, chaining outputs into inputs until green. */
-export async function exerciseEndpoints(opts: ExerciseOptions): Promise<ExerciseReport> {
+export async function exerciseEndpoints(
+  opts: ExerciseOptions,
+): Promise<ExerciseReport> {
   const overrides = opts.overrides ?? {};
   const maxIterations = opts.maxIterations ?? 5;
   const limiter = createLimiter(opts.rateLimit);
@@ -172,7 +218,13 @@ export async function exerciseEndpoints(opts: ExerciseOptions): Promise<Exercise
   const store = new Map<string, Record<string, unknown>>();
   const results = new Map<string, EndpointResult>();
   for (const ep of endpoints) {
-    results.set(ep.id, { id: ep.id, method: ep.method, path: ep.path, ok: false, attempts: 0 });
+    results.set(ep.id, {
+      id: ep.id,
+      method: ep.method,
+      path: ep.path,
+      ok: false,
+      attempts: 0,
+    });
   }
 
   let iterations = 0;
@@ -188,7 +240,9 @@ export async function exerciseEndpoints(opts: ExerciseOptions): Promise<Exercise
         const path = resolvePath(ep.path, values);
         const result = results.get(id)!;
         result.attempts++;
-        const call = await limiter.run(() => transport(ep.method, path, values));
+        const call = await limiter.run(() =>
+          transport(ep.method, path, values)
+        );
         result.status = call.status;
         result.error = call.error;
         if (call.status >= 200 && call.status < 300) {
@@ -204,7 +258,10 @@ export async function exerciseEndpoints(opts: ExerciseOptions): Promise<Exercise
       if (stillPending && !progressed) break;
       // If a pass made zero *new* progress, also stop (prevents spinning on persistent failures).
       const newlyPending = order.filter((id) => !results.get(id)!.ok);
-      if (newlyPending.length === pending.length && pending.every((id) => !results.get(id)!.ok)) break;
+      if (
+        newlyPending.length === pending.length &&
+        pending.every((id) => !results.get(id)!.ok)
+      ) break;
     }
   } finally {
     await dispose();

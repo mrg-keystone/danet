@@ -11,10 +11,14 @@ function captureConsole() {
     error: console.error,
     debug: console.debug,
   };
-  console.info = (...a: unknown[]) => void lines.push({ level: "info", args: a });
-  console.warn = (...a: unknown[]) => void lines.push({ level: "warn", args: a });
-  console.error = (...a: unknown[]) => void lines.push({ level: "error", args: a });
-  console.debug = (...a: unknown[]) => void lines.push({ level: "debug", args: a });
+  console.info = (...a: unknown[]) =>
+    void lines.push({ level: "info", args: a });
+  console.warn = (...a: unknown[]) =>
+    void lines.push({ level: "warn", args: a });
+  console.error = (...a: unknown[]) =>
+    void lines.push({ level: "error", args: a });
+  console.debug = (...a: unknown[]) =>
+    void lines.push({ level: "debug", args: a });
   return { lines, restore: () => Object.assign(console, orig) };
 }
 
@@ -28,7 +32,11 @@ function stubDatadog(status = 202) {
     return Promise.resolve(new Response("{}", { status }));
   }) as typeof fetch;
   return {
-    transport: new DatadogTransport({ apiKey: "K", service: "api", transport: fn }),
+    transport: new DatadogTransport({
+      apiKey: "K",
+      service: "api",
+      transport: fn,
+    }),
     entries,
     posts: () => posts,
   };
@@ -85,7 +93,12 @@ Deno.test("Logger - forwards to Datadog; user attrs cannot clobber reserved fiel
     const log = new Logger();
     log.configure({ appName: "api", datadog: dd.transport });
     await log.runInRequest("r9", async () => {
-      log.info("ev", { message: "CLOBBER?", seq: 999, timestamp: "BAD", foo: 1 });
+      log.info("ev", {
+        message: "CLOBBER?",
+        seq: 999,
+        timestamp: "BAD",
+        foo: 1,
+      });
       await log.settle();
     });
   } finally {
@@ -118,8 +131,14 @@ Deno.test("Logger - stamps each entry with an ISO call-time timestamp and monoto
   }
   assertEquals(dd.entries.length, 2);
   assertEquals(typeof dd.entries[0].timestamp, "string");
-  assertEquals(Number.isNaN(Date.parse(dd.entries[0].timestamp as string)), false);
-  assertEquals((dd.entries[1].seq as number) > (dd.entries[0].seq as number), true);
+  assertEquals(
+    Number.isNaN(Date.parse(dd.entries[0].timestamp as string)),
+    false,
+  );
+  assertEquals(
+    (dd.entries[1].seq as number) > (dd.entries[0].seq as number),
+    true,
+  );
 });
 
 Deno.test("Logger - sends fire as logs happen; settle() awaits them", async () => {
@@ -183,7 +202,10 @@ Deno.test("Logger - a failed send falls back to console, emails an alert, never 
 
   // Console fallback surfaced the failure...
   assertEquals(
-    lines.some((l) => l.level === "error" && String(l.args[0]).includes("Datadog log delivery failed")),
+    lines.some((l) =>
+      l.level === "error" &&
+      String(l.args[0]).includes("Datadog log delivery failed")
+    ),
     true,
   );
   // ...and an alert email was sent.

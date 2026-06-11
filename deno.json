@@ -32,7 +32,6 @@
     "reflect-metadata": "npm:reflect-metadata@0.1.13",
     "@mrg-keystone/keep": "./src/bootstrap/mod.ts",
     "@danet/core": "jsr:@danet/core@2",
-    "#handlebars": "npm:handlebars@^4.7.8",
     "#openapi3-ts": "npm:openapi3-ts@4.5.0",
     "#danet/core": "jsr:@danet/core@2",
     "#danet/swagger": "jsr:@danet/swagger@^2.1.1",

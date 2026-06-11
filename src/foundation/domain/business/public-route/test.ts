@@ -15,22 +15,37 @@ class PlainCtrl {}
 
 Deno.test("@Public on a method marks just that handler", () => {
   assertEquals(
-    isPublicContext({ getHandler: () => Ctrl.prototype.open, getClass: () => Ctrl }),
+    isPublicContext({
+      getHandler: () => Ctrl.prototype.open,
+      getClass: () => Ctrl,
+    }),
     true,
   );
   assertEquals(
-    isPublicContext({ getHandler: () => Ctrl.prototype.closed, getClass: () => Ctrl }),
+    isPublicContext({
+      getHandler: () => Ctrl.prototype.closed,
+      getClass: () => Ctrl,
+    }),
     false,
   );
 });
 
 Deno.test("@Public on a class marks the controller", () => {
-  assertEquals(isPublicContext({ getHandler: () => undefined, getClass: () => PublicCtrl }), true);
+  assertEquals(
+    isPublicContext({
+      getHandler: () => undefined,
+      getClass: () => PublicCtrl,
+    }),
+    true,
+  );
 });
 
 Deno.test("an undecorated controller is not public", () => {
   assertEquals(
-    isPublicContext({ getHandler: () => PlainCtrl.prototype, getClass: () => PlainCtrl }),
+    isPublicContext({
+      getHandler: () => PlainCtrl.prototype,
+      getClass: () => PlainCtrl,
+    }),
     false,
   );
 });

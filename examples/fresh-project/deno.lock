@@ -1654,7 +1654,6 @@
           "jsr:@danet/swagger@^2.1.1",
           "jsr:@hono/hono@4.6.3",
           "jsr:@std/assert@*",
-          "npm:handlebars@^4.7.8",
           "npm:jose@5",
           "npm:openapi3-ts@4.5.0",
           "npm:playwright@^1.49.0",

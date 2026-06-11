@@ -19,7 +19,8 @@ Deno.test("SwaggerBuilder - builds swagger docs and index page from server", asy
   assertEquals(swaggerDocs[0].doc.info.version, "1.0");
   assertStringIncludes(docsIndexHtml, "<html");
   assertStringIncludes(docsIndexHtml, "Test");
-  assertStringIncludes(docsIndexHtml, 'href="/docs/test"');
+  // Mount-relative so the index works at "/docs" standalone and "/api/docs" under Fresh.
+  assertStringIncludes(docsIndexHtml, 'href="docs/test"');
 });
 
 Deno.test("SwaggerBuilder - respects filters", async () => {

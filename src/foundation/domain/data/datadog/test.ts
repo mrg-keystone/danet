@@ -12,12 +12,19 @@ function stubFetch(status = 202) {
 
 Deno.test("DatadogTransport - send POSTs one entry as an array with the api key header", async () => {
   const { fn, calls } = stubFetch();
-  const dd = new DatadogTransport({ apiKey: "KEY", service: "svc", transport: fn });
+  const dd = new DatadogTransport({
+    apiKey: "KEY",
+    service: "svc",
+    transport: fn,
+  });
 
   await dd.send({ status: "info", message: "hi", service: "svc" });
 
   assertEquals(calls.length, 1);
-  assertEquals(calls[0].url, "https://http-intake.logs.datadoghq.com/api/v2/logs");
+  assertEquals(
+    calls[0].url,
+    "https://http-intake.logs.datadoghq.com/api/v2/logs",
+  );
   assertEquals(new Headers(calls[0].init?.headers).get("DD-API-KEY"), "KEY");
   const body = JSON.parse(calls[0].init?.body as string);
   assertEquals(Array.isArray(body), true);
@@ -36,12 +43,19 @@ Deno.test("DatadogTransport - honors a custom site", async () => {
 
   await dd.send({ status: "info", message: "x", service: "svc" });
 
-  assertEquals(calls[0].url, "https://http-intake.logs.datadoghq.eu/api/v2/logs");
+  assertEquals(
+    calls[0].url,
+    "https://http-intake.logs.datadoghq.eu/api/v2/logs",
+  );
 });
 
 Deno.test("DatadogTransport - send rejects on a non-2xx response", async () => {
   const { fn } = stubFetch(403);
-  const dd = new DatadogTransport({ apiKey: "K", service: "svc", transport: fn });
+  const dd = new DatadogTransport({
+    apiKey: "K",
+    service: "svc",
+    transport: fn,
+  });
 
   let threw = false;
   try {
@@ -54,7 +68,11 @@ Deno.test("DatadogTransport - send rejects on a non-2xx response", async () => {
 
 Deno.test("DatadogTransport - send rejects on a network error", async () => {
   const fn = (() => Promise.reject(new Error("boom"))) as typeof fetch;
-  const dd = new DatadogTransport({ apiKey: "K", service: "svc", transport: fn });
+  const dd = new DatadogTransport({
+    apiKey: "K",
+    service: "svc",
+    transport: fn,
+  });
 
   let threw = false;
   try {

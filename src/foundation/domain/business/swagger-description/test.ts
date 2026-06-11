@@ -1,5 +1,5 @@
 import { assertEquals } from "#assert";
-import { SwaggerDescription, getSwaggerDescription } from "./mod.ts";
+import { getSwaggerDescription, SwaggerDescription } from "./mod.ts";
 
 Deno.test("SwaggerDescription decorator sets metadata on class", () => {
   @SwaggerDescription("My API Description")
@@ -23,6 +23,12 @@ Deno.test("SwaggerDescription works with different descriptions", () => {
   @SwaggerDescription("Orders API - Handle order processing")
   class OrdersModule {}
 
-  assertEquals(getSwaggerDescription(UsersModule), "Users API - Manage user accounts");
-  assertEquals(getSwaggerDescription(OrdersModule), "Orders API - Handle order processing");
+  assertEquals(
+    getSwaggerDescription(UsersModule),
+    "Users API - Manage user accounts",
+  );
+  assertEquals(
+    getSwaggerDescription(OrdersModule),
+    "Orders API - Handle order processing",
+  );
 });

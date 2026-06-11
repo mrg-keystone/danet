@@ -13,8 +13,10 @@ export class SwaggerBuilder {
     this.crawler = new Crawler(...filters);
     this.documentBuilder = new DanetDocumentBuilder();
     // particleCount left at the builder's modest default — 100 just bloated every rendered page.
+    // Relative prefix: the index is served at "/docs" standalone and "/api/docs" mounted under
+    // Fresh, and "docs/app" resolves correctly from both — "/docs/app" would escape the mount.
     this.indexPageBuilder = new IndexPageBuilder({
-      prefix: "/docs/",
+      prefix: "docs/",
     });
   }
 
@@ -28,7 +30,9 @@ export class SwaggerBuilder {
     // Index from the CRAWLED modules, not server.moduleNames — the server only
     // registers the root module, so an imported module would get a /docs/<name>
     // page but no card on the index.
-    const docsIndexHtml = this.indexPageBuilder.build(allModules.map((m) => m.name));
+    const docsIndexHtml = this.indexPageBuilder.build(
+      allModules.map((m) => m.name),
+    );
     return { swaggerDocs, docsIndexHtml };
   }
 }

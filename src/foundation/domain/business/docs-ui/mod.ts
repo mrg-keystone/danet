@@ -47,7 +47,8 @@ export function createDocsJsonHandler(
   return async (c) => {
     if (trustLocalhost && isLoopbackRequest(c)) return json();
 
-    const credential = extractBearer(c.req.header("authorization")) ?? c.req.query("token");
+    const credential = extractBearer(c.req.header("authorization")) ??
+      c.req.query("token");
     const identity = credential
       ? await validateCredential(credential, {
         signingKey: opts.signingKey,
@@ -55,7 +56,10 @@ export function createDocsJsonHandler(
       })
       : null;
     if (!identity) {
-      return c.json({ error: "unauthorized", message: "Invalid or missing docs token." }, 401);
+      return c.json({
+        error: "unauthorized",
+        message: "Invalid or missing docs token.",
+      }, 401);
     }
     opts.logger.setSource(identity.source);
     return json();
@@ -84,7 +88,9 @@ export function docsSeedScript(): string {
 /** Injects the seed script into an existing HTML page (the docs index) before `</body>`. */
 export function injectDocsScript(html: string): string {
   const tag = `<script>${docsSeedScript()}</script>`;
-  return html.includes("</body>") ? html.replace("</body>", `${tag}</body>`) : html + tag;
+  return html.includes("</body>")
+    ? html.replace("</body>", `${tag}</body>`)
+    : html + tag;
 }
 
 /**
@@ -92,8 +98,10 @@ export function injectDocsScript(html: string): string {
  * stored token, and shows a clear message (and clears the token) on a `401`.
  */
 export function swaggerShellHtml(title: string): string {
-  const cssHref = `https://unpkg.com/swagger-ui-dist@${SWAGGER_UI_VERSION}/swagger-ui.css`;
-  const bundleSrc = `https://unpkg.com/swagger-ui-dist@${SWAGGER_UI_VERSION}/swagger-ui-bundle.js`;
+  const cssHref =
+    `https://unpkg.com/swagger-ui-dist@${SWAGGER_UI_VERSION}/swagger-ui.css`;
+  const bundleSrc =
+    `https://unpkg.com/swagger-ui-dist@${SWAGGER_UI_VERSION}/swagger-ui-bundle.js`;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -141,6 +149,16 @@ window.addEventListener("load", function(){
 }
 
 function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (ch) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]!));
+  return value.replace(
+    /[&<>"']/g,
+    (
+      ch,
+    ) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    }[ch]!),
+  );
 }
