@@ -160,13 +160,25 @@ jobs:
   # this job entirely, so the workflow stays drop-in reusable.
   skill-release:
     needs: publish
-    if: ${{ hashFiles('skills/**/SKILL.md') != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      # hashFiles() is not allowed in a job-level `if` (no workspace exists at
+      # job scheduling time), so the skills/ check lives in a step instead —
+      # repos without skills/ no-op here and the workflow stays drop-in reusable.
+      - name: Detect skills
+        id: detect
+        run: |
+          if ls skills/*/SKILL.md >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "no skills/ dir — nothing to release"
+          fi
       - name: Pack one tarball per skill
+        if: steps.detect.outputs.found == 'true'
         run: |
           mkdir -p dist
           for d in skills/*/; do
@@ -175,6 +187,7 @@ jobs:
           done
           ls -l dist/
       - name: Publish skill + installer (rolling `latest` release)
+        if: steps.detect.outputs.found == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
