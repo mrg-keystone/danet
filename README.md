@@ -811,12 +811,16 @@ its consumer. Flows tint their edges, and optional/stub endpoints carry chips.
 The map is **live**: each node's status dot recolors from the cake
 sessions in `localStorage` — run a step on any docs page (any tab) and the map
 updates. A **Run all** button runs the whole composed process server-side (the
-localhost-only `/docs/_run` walk); nodes pulse while it runs, then the report
-is **written back into each module's cake session** — statuses, response
-bodies, timings, and captures land in the same `localStorage` the cakes read,
-so there is one source of truth for run state: the colors survive a reload,
-open cake tabs update live, and opening a cake afterwards finds its steps
-already green with responses and captures pre-filled.
+localhost-only `/docs/_run` walk) **module by module, endpoint by endpoint**,
+in the order the lanes draw — and it runs under the cake's own defaults: the
+untagged-only walk (destructive flow branches never auto-run), your typed
+environment variables as seeds, and each module's per-step skips honored.
+Results **stream**: every call's outcome is written into that module's cake
+session as it lands (status, response body, timing, captures + the shared
+scope) and its node settles green/red while the rest keep pulsing. One source
+of truth for run state: colors survive a reload, **already-open cake tabs
+update live**, and opening a cake afterwards finds its steps green with
+responses and captures pre-filled.
 Clicking a node **deep-links** into that module's cake with the step expanded
 (`/docs/<module>#<endpointId>`). (Underscore-prefixed so a module named "map"
 can still own `/docs/map`.)
@@ -875,10 +879,15 @@ await exerciseEndpoints({ api, flow: "card", overrides: { seeds: { memberId: "m-
 
 Against a **running** server, `POST /docs/_run` (localhost-only) is the HTTP
 door to the same walk: `{ flow?, seeds?, byEndpoint?, rateLimit?,
-maxIterations?, dryRun?, scenario? }` — `scenario: "happy-path"` replays a
-saved `fixtures/scenarios/` file (its flow + literal body fields), and
-`dryRun: true` returns just `order`/`cycles`/`unresolvedInputs` without firing
-a request.
+maxIterations?, dryRun?, scenario?, orderBy?, skip?, stream? }` —
+`scenario: "happy-path"` replays a saved `fixtures/scenarios/` file (its flow
++ literal body fields); `orderBy: "module"` walks lane-by-lane (modules in
+docs order, topological within — forward cross-module deps converge on a
+later iteration); `skip: ["module:op", …]` excludes steps like the cake's
+skip toggle; `stream: true` returns ndjson — one `{kind:"result",…}` line per
+call as it completes, then a final `{kind:"done",…}` summary (what the map's
+Run all consumes); `dryRun: true` returns just
+`order`/`cycles`/`unresolvedInputs` without firing a request.
 
 > **Playwright is an optional peer.** It's only loaded when you pass a
 > `baseUrl`; in-process runs (and everything else in keep) need no browser.

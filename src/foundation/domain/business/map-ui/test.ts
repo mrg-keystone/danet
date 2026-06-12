@@ -217,9 +217,16 @@ Deno.test("mapShellHtml - Run all button drives the localhost /docs/_run walk", 
   // The button POSTs the sibling headless-run door and pulses nodes while the walk is in flight.
   assertStringIncludes(html, '"/docs/_run"');
   assertStringIncludes(html, "circle.dot.run");
-  // The report is written back INTO the cake sessions (one source of truth for run state).
-  assertStringIncludes(html, "function writeBack");
+  // Results are written back INTO the cake sessions (one source of truth for run state),
+  // streamed row by row, module by module, with the cake's defaults (untagged-only walk,
+  // typed env vars as seeds, per-module skips).
+  assertStringIncludes(html, "function writeBackRow");
   assertStringIncludes(html, "keep:emulator:globals");
+  assertStringIncludes(html, "stream: true");
+  assertStringIncludes(html, 'orderBy: "module"');
+  assertStringIncludes(html, 'flow: "__main"');
+  assertStringIncludes(html, "sessionSeeds");
+  assertStringIncludes(html, "sessionSkips");
 });
 
 Deno.test("mapShellHtml - dev reload script injected only when opts.dev", () => {

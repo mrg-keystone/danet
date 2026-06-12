@@ -151,6 +151,13 @@ Deno.test({
       // Nothing has run — no green dots, button idle.
       assertEquals(await page.locator("svg .dot.ok").count(), 0);
 
+      // Open mint's cake BEFORE the run and leave it open — it must pick the results up live
+      // via the storage merge, without a reload.
+      const liveCake = await context.newPage();
+      await liveCake.goto(`http://localhost:${port}/docs/mint`);
+      assertEquals(await liveCake.locator("li .dot.ok").count(), 0);
+      await page.bringToFront();
+
       // Run all → POST /docs/_run (localhost-only) walks both modules in-process; greet's
       // $memberId auto-wires from mint's output, so both endpoints pass and both dots green.
       await page.locator("#runall").click();
@@ -190,7 +197,18 @@ Deno.test({
         sharedCapture: true,
       });
 
-      // Opening the cake finds the step already green, with the response and capture pre-filled.
+      // The ALREADY-OPEN cake tab caught the run live (storage merge) — no reload happened.
+      await liveCake.bringToFront();
+      await liveCake.locator('li[data-id="mintMember"] .dot.ok').waitFor({
+        timeout: 5000,
+      });
+      const liveVars = await liveCake.locator("#vars").textContent();
+      assert(
+        liveVars?.includes("m-42"),
+        `the open cake should show the run's capture live: ${liveVars}`,
+      );
+
+      // Opening a FRESH cake finds the step already green, with response + capture pre-filled.
       const cake = await context.newPage();
       await cake.goto(`http://localhost:${port}/docs/mint`);
       await cake.locator('li[data-id="mintMember"] .dot.ok').waitFor({

@@ -411,6 +411,12 @@ export class BootstrapServer {
           const opts: ExerciseOptions = {
             api: runTarget,
             flow: typeof body.flow === "string" ? body.flow : scenarioFlow,
+            orderBy: body.orderBy === "module" ? "module" : undefined,
+            skip: Array.isArray(body.skip)
+              ? (body.skip as unknown[]).filter((s): s is string =>
+                typeof s === "string"
+              )
+              : undefined,
             rateLimit: body.rateLimit as ExerciseOptions["rateLimit"],
             maxIterations: typeof body.maxIterations === "number"
               ? body.maxIterations
@@ -423,6 +429,45 @@ export class BootstrapServer {
                 | undefined,
             },
           };
+          // stream: true → ndjson. One {kind:"result",…} line per attempt AS IT COMPLETES (the
+          // map paints nodes live from these), then a final {kind:"done",…} summary. Errors
+          // mid-run become a {kind:"error"} line — the stream itself always ends cleanly.
+          if (body.stream === true && !opts.dryRun) {
+            const encoder = new TextEncoder();
+            const stream = new ReadableStream<Uint8Array>({
+              start(controller) {
+                const send = (obj: unknown) =>
+                  controller.enqueue(
+                    encoder.encode(JSON.stringify(obj) + "\n"),
+                  );
+                exerciseEndpoints({
+                  ...opts,
+                  onResult: (r) => send({ kind: "result", ...r }),
+                }).then((report) => {
+                  send({
+                    kind: "done",
+                    ok: report.failed.length === 0 &&
+                      report.cycles.length === 0,
+                    passed: report.passed.length,
+                    failed: report.failed,
+                    optionalFailed: report.optionalFailed,
+                    cycles: report.cycles,
+                    iterations: report.iterations,
+                  });
+                  controller.close();
+                }).catch((e) => {
+                  send({
+                    kind: "error",
+                    error: e instanceof Error ? e.message : String(e),
+                  });
+                  controller.close();
+                });
+              },
+            });
+            return new Response(stream, {
+              headers: { "content-type": "application/x-ndjson" },
+            });
+          }
           const report = await exerciseEndpoints(opts);
           if (opts.dryRun) {
             return c.json({

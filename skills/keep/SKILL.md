@@ -159,10 +159,13 @@ After wiring endpoints, **prove the chain runs, don't just type-check**:
 2. **`/docs/_map`** shows the whole composed app as one live graph — module
    lanes, solid bind edges, dashed `$input` contracts, status dots that
    recolor as you run steps in any tab. Its **Run all** button runs the entire
-   composed process server-side (the localhost-only `/docs/_run` walk) and
-   writes the report back into the cake sessions — one source of truth, so
-   colors survive reloads and cakes open pre-filled. Click a node to deep-link
-   into its cake step.
+   composed process server-side (the localhost-only `/docs/_run` walk)
+   **module by module, endpoint by endpoint**, with the cake's defaults
+   (untagged-only flow, typed env vars as seeds, skips honored), streaming
+   each result back into the cake sessions as it lands — one source of truth,
+   so nodes settle one at a time, colors survive reloads, open cake tabs
+   update live, and cakes open pre-filled. Click a node to deep-link into its
+   cake step.
 3. In tests/CI, run the same walk headlessly:
 
 ```ts

@@ -251,14 +251,19 @@ an unproduced `$name` renders as an amber badge on its consumer. Flow edges
 are tinted; optional/stub endpoints carry chips. The map is **live** — node
 dots recolor from cake sessions in `localStorage`, any tab. A **Run all**
 button runs the whole composed process server-side via the localhost-only
-`POST /docs/_run` walk; nodes pulse while it runs, then the report is
-**written back into each module's cake session** (statuses, response bodies,
-timings, captures — including the shared cross-module capture scope). The
-cake sessions stay the one source of truth: map colors survive a reload, open
-cake tabs update live via the storage event, and a cake opened afterwards has
-its steps already green with responses and captures pre-filled. Clicking a
-node deep-links to `/docs/<module>#<endpointId>` with that step expanded.
-(Underscore-prefixed so a module named "map" can still own `/docs/map`.)
+`POST /docs/_run` walk, **module by module, endpoint by endpoint** (lane
+order), under the cake's own defaults: `flow: "__main"` (untagged steps only —
+destructive branches never auto-run), the user's typed environment variables
+as `seeds`, and each module's per-step skips as `skip`. The run **streams**:
+each result is written into that module's cake session as it lands (status,
+response body, ms, captures + shared scope) and its node settles green/red
+while the rest keep pulsing. The cake sessions stay the one source of truth:
+map colors survive a reload, **already-open cake tabs absorb the writes live**
+(they merge external `status`/`meta`/`captured` changes to their own session
+key — local edits always win), and a cake opened afterwards has its steps
+green with responses pre-filled. Clicking a node deep-links to
+`/docs/<module>#<endpointId>` with that step expanded. (Underscore-prefixed
+so a module named "map" can still own `/docs/map`.)
 
 ## Dev mode — `KEEP_DEV` and `/docs/_dev`
 
@@ -335,7 +340,14 @@ work right now?" without importing the app. Same trust posture as `/_mint`:
 loopback socket only; in-process dispatch (no conn info) is denied; `503` until
 the in-process backend exists.
 
-- Body (all optional): `{ flow?, seeds?, byEndpoint?, rateLimit?, maxIterations?, dryRun?, scenario? }`.
+- Body (all optional): `{ flow?, seeds?, byEndpoint?, rateLimit?, maxIterations?, dryRun?, scenario?, orderBy?, skip?, stream? }`.
+- `orderBy: "module"` walks lane-by-lane (modules in docs order, topological
+  within each lane); forward cross-module deps fail that pass and converge on
+  a later iteration. `skip: ["<module>:<op>", …]` excludes steps entirely
+  (the cake's skip toggle, headless). `stream: true` returns ndjson: one
+  `{kind:"result", …row}` line per call as it completes (a retried step
+  streams once per attempt), then `{kind:"done", ok, passed, failed[],
+  optionalFailed[], cycles, iterations}` — what the map's Run all consumes.
 - `200` → `{ ok, passed[], failed[], optionalFailed[], order, cycles, iterations }`,
   where `ok = failed.length === 0 && cycles.length === 0` and every row carries
   its `module` (bare op-ids collide across composed modules) plus the response

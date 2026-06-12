@@ -62,6 +62,26 @@ export interface ExerciseOptions {
    */
   flow?: string;
   /**
+   * Walk order. "process" (default) = one global topological order over the whole composed
+   * app. "module" = lane-by-lane: modules in docs order, each module's endpoints in
+   * topological order — the way a human clicks through the cakes. Cross-module forward
+   * dependencies still converge: a consumer that runs before its producer fails that pass and
+   * succeeds on a later iteration.
+   */
+  orderBy?: "process" | "module";
+  /**
+   * Module-qualified working ids (`"<module>:<operationId>"`) excluded from the walk entirely —
+   * the cake's per-step skip toggle, honored headlessly. Skipped endpoints appear nowhere in
+   * the report; steps depending on them simply fail (same as the cake's gating).
+   */
+  skip?: string[];
+  /**
+   * Called after every attempt completes with a snapshot of that endpoint's result row — the
+   * streaming hook (`/docs/_run` with `stream: true` forwards these as ndjson lines). A step
+   * retried across iterations emits once per attempt.
+   */
+  onResult?: (result: EndpointResult) => void;
+  /**
    * Build the run order, cycles, and unresolved $inputs without sending a single request — a
    * cheap graph pre-flight. The report's passed/failed/optionalFailed are empty, iterations 0.
    */
@@ -301,11 +321,19 @@ export async function exerciseEndpoints(
       id: `${module}:${ep.id}`,
     }));
   });
+  // Docs order = module lane order on the map; orderBy "module" walks lanes in this order.
+  const moduleRank = new Map<string, number>(
+    opts.api.docs.map((d, i) => [d.path.replace(/^\//, ""), i]),
+  );
   if (opts.flow) {
     const flow = opts.flow;
     endpoints = endpoints.filter((ep) =>
       ep.flows.length === 0 || ep.flows.includes(flow)
     );
+  }
+  if (opts.skip && opts.skip.length) {
+    const skipped = new Set(opts.skip);
+    endpoints = endpoints.filter((ep) => !skipped.has(ep.id));
   }
   // Resolve a `dependsOn`/`bind` reference (written with bare operationIds) to a working id:
   // a same-module endpoint wins; otherwise the single cross-module endpoint with that
@@ -393,7 +421,19 @@ export async function exerciseEndpoints(
       }
     }
   }
-  const { order, cycles } = processOrder(endpoints);
+  const { order: topoOrder, cycles } = processOrder(endpoints);
+  // "module" = lane-by-lane (docs order), topological within each lane — the way a human walks
+  // the cakes. Forward cross-module deps fail their pass and converge on a later iteration.
+  const order = opts.orderBy === "module"
+    ? (() => {
+      const topoIdx = new Map(topoOrder.map((id, i) => [id, i]));
+      return [...topoOrder].sort((a, b) => {
+        const ma = moduleRank.get(byId.get(a)?.module ?? "") ?? 0;
+        const mb = moduleRank.get(byId.get(b)?.module ?? "") ?? 0;
+        return ma !== mb ? ma - mb : topoIdx.get(a)! - topoIdx.get(b)!;
+      });
+    })()
+    : topoOrder;
   // Report bare operationIds (working ids are module-namespaced); each result's `module`
   // disambiguates same-named handlers across composed modules.
   const bare = (key: string) => byId.get(key)?.bareId ?? key;
@@ -468,6 +508,8 @@ export async function exerciseEndpoints(
             store.set(id, call.body as Record<string, unknown>);
           }
         }
+        // Snapshot, not the live row — a later iteration must not mutate what was streamed.
+        opts.onResult?.({ ...result });
       }
       // No progress this pass ⇒ further passes won't help; stop early.
       const progressed = order.some((id) => results.get(id)!.ok);

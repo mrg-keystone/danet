@@ -213,6 +213,7 @@ export const mapClientJs: string = String.raw`
   // them; its own "Run all" (below) WRITES the headless report back into those sessions, so the
   // map, every cake tab, and a later page load all agree on the same colors and captures.
   var running = false;
+  var settled = {};   // during a run: node key -> true once its streamed result landed
   function statusFor(n) {
     try {
       var raw = localStorage.getItem("keep:emulator:" + prefix + n.docsPath);
@@ -227,7 +228,9 @@ export const mapClientJs: string = String.raw`
     DATA.nodes.forEach(function (n) {
       var g = nodeEls[n.key];
       if (!g) return;
-      var st = running ? "run" : statusFor(n);
+      // Mid-run, nodes pulse until their streamed result lands; settled ones show the session
+      // truth that result just wrote. Off-walk nodes settle back at the end.
+      var st = running && !settled[n.key] ? "run" : statusFor(n);
       g.querySelector(".dot").setAttribute("class", "dot" + (st ? " " + st : ""));
     });
   }
@@ -240,109 +243,161 @@ export const mapClientJs: string = String.raw`
   });
 
   // ── Run all (the whole composed process, server-side) ──────────────────────
-  // POST the sibling /docs/_run — the localhost-only door to exerciseEndpoints — then write the
-  // report INTO each module's cake session (status, response meta, captures) plus the shared
-  // cross-module capture scope. Open cake tabs pick it up via the storage event; opening a cake
-  // later finds its steps already green with responses and captures pre-filled. 403 (not
-  // localhost) / 503 (still booting) surface their server message in the banner.
+  // POST the sibling /docs/_run with stream:true — the walk runs MODULE BY MODULE, endpoint by
+  // endpoint (the order the lanes draw), like the cake's own defaults: untagged steps only (no
+  // destructive flow branches), the user's typed environment variables as seeds, and each
+  // module's per-step skips honored. Every streamed result is written into that module's cake
+  // session (status, response meta, captures + shared scope) AS IT LANDS, and its node settles
+  // green/red while the rest keep pulsing — so the map paints one step at a time and every cake
+  // tab agrees afterwards. 403 (not localhost) / 503 (still booting) surface their message.
 
   // Mirrors the cake's freshState() — keep the shapes in sync.
   function freshSession() {
     return { v: 1, status: {}, captured: {}, meta: {}, userVars: {}, bodies: {}, paramVals: {}, expanded: {}, skips: {}, setup: [], asserts: {}, prev: {}, savedAt: 0 };
   }
-  function writeBack(rep) {
-    var rowsByModule = {};
-    function add(st) {
-      return function (row) {
-        if (!row || !row.module || !row.id) return;
-        (rowsByModule[row.module] = rowsByModule[row.module] || []).push({ row: row, st: st });
-      };
+  function readJson(key) {
+    try {
+      var parsed = JSON.parse(localStorage.getItem(key));
+      return parsed && parsed.v === 1 ? parsed : null;
+    } catch (e) { return null; }
+  }
+  function writeBackRow(row) {
+    if (!row || !row.module || !row.id) return;
+    var key = "keep:emulator:" + prefix + "/docs/" + row.module;
+    var session = readJson(key) || freshSession();
+    ["status", "captured", "meta"].forEach(function (k) { if (!session[k]) session[k] = {}; });
+    session.status[row.id] = row.ok ? "ok" : "fail";
+    session.meta[row.id] = { http: row.status || 0, ms: row.ms || 0, body: row.body };
+    if (row.ok && row.body !== null && typeof row.body === "object") {
+      session.captured[row.id] = row.body;
+      var globals = readJson("keep:emulator:globals") || { v: 1, vars: {}, captured: {}, persist: {} };
+      if (!globals.captured) globals.captured = {};
+      globals.captured[row.module + ":" + row.id] = row.body;
+      try { localStorage.setItem("keep:emulator:globals", JSON.stringify(globals)); } catch (e) { /* best effort */ }
     }
-    (rep.passed || []).forEach(add("ok"));
-    (rep.failed || []).forEach(add("fail"));
-    (rep.optionalFailed || []).forEach(add("fail"));
-
-    var globalsKey = "keep:emulator:globals";
-    var globals = null;
-    try { globals = JSON.parse(localStorage.getItem(globalsKey)); } catch (e) { globals = null; }
-    if (!globals || globals.v !== 1) globals = { v: 1, vars: {}, captured: {}, persist: {} };
-    if (!globals.captured) globals.captured = {};
-
-    Object.keys(rowsByModule).forEach(function (module) {
-      var key = "keep:emulator:" + prefix + "/docs/" + module;
-      var session = null;
-      try {
-        var parsed = JSON.parse(localStorage.getItem(key));
-        if (parsed && parsed.v === 1) session = parsed;
-      } catch (e) { /* corrupted session is replaced */ }
-      if (!session) session = freshSession();
-      ["status", "captured", "meta"].forEach(function (k) { if (!session[k]) session[k] = {}; });
-      rowsByModule[module].forEach(function (en) {
-        var row = en.row;
-        session.status[row.id] = en.st;
-        session.meta[row.id] = { http: row.status || 0, ms: row.ms || 0, body: row.body };
-        if (en.st === "ok" && row.body !== null && typeof row.body === "object") {
-          session.captured[row.id] = row.body;
-          globals.captured[module + ":" + row.id] = row.body;
-        }
+    session.savedAt = Date.now();
+    try { localStorage.setItem(key, JSON.stringify(session)); } catch (e) { /* storage full */ }
+  }
+  // The cake-session context the headless walk should run under: the user's typed environment
+  // variables (literal values only — {{refs}} are page-side machinery) and every lane's skips.
+  function sessionSeeds() {
+    var globals = readJson("keep:emulator:globals");
+    var out = {};
+    if (globals && globals.vars) {
+      Object.keys(globals.vars).forEach(function (name) {
+        var v = globals.vars[name];
+        if (typeof v === "string" && (v === "" || v.indexOf("{{") >= 0)) return;
+        out[name] = v;
       });
-      session.savedAt = Date.now();
-      try { localStorage.setItem(key, JSON.stringify(session)); } catch (e) { /* storage full */ }
+    }
+    return out;
+  }
+  function sessionSkips() {
+    var out = [];
+    var seen = {};
+    DATA.nodes.forEach(function (n) {
+      if (seen[n.module]) return;
+      seen[n.module] = true;
+      var session = readJson("keep:emulator:" + prefix + n.docsPath);
+      if (!session || !session.skips) return;
+      Object.keys(session.skips).forEach(function (id) {
+        if (session.skips[id]) out.push(n.module + ":" + id);
+      });
     });
-    try { localStorage.setItem(globalsKey, JSON.stringify(globals)); } catch (e) { /* best effort */ }
+    return out;
   }
 
   var runallBtn = document.getElementById("runall");
+  function runFinished() {
+    running = false;
+    settled = {};
+    runallBtn.disabled = false;
+    runallBtn.textContent = "Run all";
+    recolor();
+  }
+  function showReport(rep) {
+    var nfail = (rep.failed || []).length;
+    var nopt = (rep.optionalFailed || []).length;
+    var ncyc = (rep.cycles || []).length;
+    if (ncyc) {
+      banner("err", "Dependency cycle — " + rep.cycles.map(function (c) {
+        return esc(c.join(" → "));
+      }).join("; ") + ".");
+    } else if (nfail) {
+      banner("err", nfail + " step" + (nfail === 1 ? "" : "s") + " failed: " +
+        (rep.failed || []).map(function (row) {
+          return esc((row.module ? row.module + ":" : "") + row.id);
+        }).join(", ") + "." + (nopt ? " " + nopt + " optional also failed." : ""));
+    } else {
+      banner("ok", "All " + (rep.passed || 0) + " steps passed." +
+        (nopt ? " " + nopt + " optional failed." : ""));
+    }
+  }
   if (runallBtn) {
     runallBtn.addEventListener("click", function () {
       if (running) return;
       running = true;
+      settled = {};
       runallBtn.disabled = true;
       runallBtn.textContent = "Running…";
-      banner("info", "Running every module's process in order…");
+      banner("info", "Running each module in order, one endpoint at a time…");
       recolor();
+      var done = 0;
       fetch(prefix + "/docs/_run", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: "{}",
+        body: JSON.stringify({
+          stream: true,
+          orderBy: "module",
+          flow: "__main",
+          seeds: sessionSeeds(),
+          skip: sessionSkips(),
+        }),
       }).then(function (res) {
-        return res.json().then(
-          function (v) { return { res: res, v: v }; },
-          function () { return { res: res, v: {} }; },
-        );
-      }).then(function (r) {
-        running = false;
-        runallBtn.disabled = false;
-        runallBtn.textContent = "Run all";
-        if (!r.res.ok) {
-          recolor();
-          banner("err", r.v && r.v.error ? esc(r.v.error) : "Run failed (HTTP " + r.res.status + ").");
-          return;
+        if (!res.ok) {
+          return res.json().then(
+            function (v) { throw new Error(v && v.error ? v.error : "HTTP " + res.status); },
+            function () { throw new Error("HTTP " + res.status); },
+          );
         }
-        var rep = r.v;
-        writeBack(rep);
-        recolor();
-        var nfail = (rep.failed || []).length;
-        var nopt = (rep.optionalFailed || []).length;
-        var ncyc = (rep.cycles || []).length;
-        if (ncyc) {
-          banner("err", "Dependency cycle — " + rep.cycles.map(function (c) {
-            return esc(c.join(" → "));
-          }).join("; ") + ".");
-        } else if (nfail) {
-          banner("err", nfail + " step" + (nfail === 1 ? "" : "s") + " failed: " +
-            (rep.failed || []).map(function (row) {
-              return esc((row.module ? row.module + ":" : "") + row.id);
-            }).join(", ") + "." + (nopt ? " " + nopt + " optional also failed." : ""));
-        } else {
-          banner("ok", "All " + (rep.passed || []).length + " steps passed." +
-            (nopt ? " " + nopt + " optional failed." : ""));
+        var reader = res.body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = "";
+        function handleLine(line) {
+          if (!line) return;
+          var msg;
+          try { msg = JSON.parse(line); } catch (e) { return; }
+          if (msg.kind === "result") {
+            writeBackRow(msg);
+            settled[msg.module + ":" + msg.id] = true;
+            done++;
+            banner("info", "Running each module in order — " + done + " call" + (done === 1 ? "" : "s") + " completed…");
+            recolor();
+          } else if (msg.kind === "done") {
+            runFinished();
+            showReport(msg);
+          } else if (msg.kind === "error") {
+            runFinished();
+            banner("err", "Run failed — " + esc(msg.error || "unknown error"));
+          }
         }
+        function pump() {
+          return reader.read().then(function (chunk) {
+            if (chunk.done) {
+              handleLine(buffer.trim());
+              if (running) runFinished();   // stream ended without a done line — settle anyway
+              return;
+            }
+            buffer += decoder.decode(chunk.value, { stream: true });
+            var lines = buffer.split("\n");
+            buffer = lines.pop();
+            lines.forEach(function (l) { handleLine(l.trim()); });
+            return pump();
+          });
+        }
+        return pump();
       }).catch(function (err) {
-        running = false;
-        runallBtn.disabled = false;
-        runallBtn.textContent = "Run all";
-        recolor();
+        runFinished();
         banner("err", "Run failed — " + esc(err && err.message ? err.message : String(err)));
       });
     });

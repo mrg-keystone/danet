@@ -309,6 +309,22 @@ export const emulatorClientJs: string = String.raw`
   // Another docs page ran a step or set a variable — pick it up live. (The storage event only
   // fires in OTHER tabs, so this can't fight an edit being typed here.)
   window.addEventListener("storage", function (e) {
+    if (e.key === KEY) {
+      // Another tab wrote THIS module's session (the map's Run all, a cross-module setup
+      // step). Merge the runner-owned slices into memory so the page shows it live and the
+      // next local save can't clobber it. Page-local edits (bodies, params, asserts, setup,
+      // skips, flow, expanded) always win from memory.
+      try {
+        var remote = JSON.parse(e.newValue);
+        if (remote && remote.v === 1) {
+          ["status", "meta", "captured", "prev"].forEach(function (k) {
+            if (remote[k]) state[k] = remote[k];
+          });
+          updateAll();
+        }
+      } catch (err) { /* unreadable write — ignore */ }
+      return;
+    }
     if (e.key !== GKEY) return;
     loadGlobals();
     updateAll();

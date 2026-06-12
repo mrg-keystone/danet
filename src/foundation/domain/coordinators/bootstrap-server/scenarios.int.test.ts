@@ -202,3 +202,30 @@ Deno.test("/docs/_heal-rules - serves the normalized project rules file", async 
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("/docs/_run - stream:true emits ndjson result lines then a done summary", async () => {
+  const server = await bootstrapServer("scen-app", ThingsModule);
+  try {
+    const res = await server.handler(
+      jsonReq("/docs/_run", { stream: true, orderBy: "module" }),
+      conn(loopback),
+    );
+    assertEquals(res.status, 200);
+    assertEquals(res.headers.get("content-type"), "application/x-ndjson");
+    const lines = (await res.text()).trim().split("\n").map((l) =>
+      JSON.parse(l)
+    );
+    const results = lines.filter((l) => l.kind === "result");
+    assert(results.length >= 1, "at least one streamed result row");
+    assertEquals(results[0].module, "things");
+    assertEquals(results[0].id, "create");
+    assertEquals(results[0].ok, true);
+    assert(results[0].body, "streamed rows carry the response body");
+    const done = lines[lines.length - 1];
+    assertEquals(done.kind, "done");
+    assertEquals(done.ok, true);
+    assertEquals(done.passed, 1);
+  } finally {
+    await server.stop();
+  }
+});

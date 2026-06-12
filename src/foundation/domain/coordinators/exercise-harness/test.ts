@@ -555,3 +555,50 @@ Deno.test("exerciseEndpoints - string seeds are coerced to the declared schema t
     await server.stop();
   }
 });
+
+// ── orderBy module / skip / onResult (the map's Run-all contract) ────────────
+
+Deno.test("exerciseEndpoints - orderBy module walks lane by lane and converges on forward deps", async () => {
+  // Docs order puts orders FIRST, but orders.place depends on users.create — the module-grouped
+  // walk runs place before its producer exists, fails that pass, and goes green on iteration 2.
+  const server = await bootstrapServer("harness-app", [
+    OrdersModule,
+    UsersModule,
+  ]);
+  try {
+    const rows: string[] = [];
+    const report = await exerciseEndpoints({
+      api: server,
+      orderBy: "module",
+      onResult: (r) => rows.push(`${r.module}:${r.id}:${r.ok}`),
+    });
+    assertEquals(report.failed, []);
+    // Lane-by-lane: the orders lane (docs order) first, then users in topological order.
+    assertEquals(report.order, ["place", "create", "fetch"]);
+    // The stream shows the retry: place fails first, then succeeds after users ran.
+    assertEquals(rows[0], "orders:place:false");
+    assert(
+      rows.includes("orders:place:true"),
+      `expected a green retry: ${rows}`,
+    );
+    const place = report.passed.find((r) => r.id === "place")!;
+    assertEquals(place.attempts, 2);
+  } finally {
+    await server.stop();
+  }
+});
+
+Deno.test("exerciseEndpoints - skip excludes steps from the walk and the report entirely", async () => {
+  const server = await bootstrapServer("harness-app", UsersModule);
+  try {
+    const report = await exerciseEndpoints({
+      api: server,
+      skip: ["users:fetch"],
+    });
+    assertEquals(report.passed.map((r) => r.id), ["create"]);
+    assertEquals(report.failed, []);
+    assert(!report.order.includes("fetch"), "skipped steps leave the order");
+  } finally {
+    await server.stop();
+  }
+});

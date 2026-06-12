@@ -196,6 +196,8 @@ Deno.test("emulatorShellHtml - expectations, scenarios, diff, and project heal r
   assertStringIncludes(html, "changed vs previous run");
   // Project heal rules are fetched from the localhost-only door.
   assertStringIncludes(html, "/docs/_heal-rules");
+  // An open tab merges external writes to its own session key (map Run all, foreign setup).
+  assertStringIncludes(html, "e.key === KEY");
   // The QuickBooks-era hardcoded slugs must be gone from the shipped client.
   assert(!html.includes("not-in-catalog"));
   assert(!html.includes("eligibleTextFids"));
