@@ -63,3 +63,34 @@ Deno.test("SwaggerBuilder - concurrent multi-module build leaves console.log int
     "console.log must be restored to the host app's original after the concurrent facade inits",
   );
 });
+
+Deno.test("required honors class-validator @IsOptional", async () => {
+  const { IsInt, IsOptional, IsString } = await import("class-validator");
+  class OptionalProbeDto {
+    @IsString()
+    name!: string;
+    @IsOptional()
+    @IsInt()
+    limit?: number;
+  }
+  // keep the class referenced so the decorators actually run
+  void OptionalProbeDto;
+
+  const { honorOptionalProps, optionalPropsByClassName } = await import(
+    "./mod.ts"
+  );
+  const optionals = optionalPropsByClassName();
+  assertEquals(optionals.get("OptionalProbeDto")?.has("limit"), true);
+
+  const doc = {
+    components: {
+      schemas: {
+        OptionalProbeDto: { required: ["name", "limit"] },
+        Untouched: { required: ["x"] },
+      },
+    },
+  };
+  honorOptionalProps(doc, optionals);
+  assertEquals(doc.components.schemas.OptionalProbeDto.required, ["name"]);
+  assertEquals(doc.components.schemas.Untouched.required, ["x"]);
+});
